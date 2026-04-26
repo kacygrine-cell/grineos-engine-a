@@ -7,3 +7,7 @@ healthcheckPath = "/"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
+
+[[cronJobs]]
+schedule = "*/30 * * * *"
+command = "python -c \"import httpx; httpx.post('http://localhost:' + __import__('os').environ.get('PORT','8001') + '/alerts/check')\""
