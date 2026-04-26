@@ -219,3 +219,79 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8001))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+
+
+# Alert endpoints
+from engine.alerts import check_and_fire, get_alert_status
+
+class AlertConfigRequest(BaseModel):
+    email: str
+    active: bool = True
+
+@app.post("/alerts/check", tags=["Alerts"])
+async def alerts_check():
+    """
+    Check current regime state and fire any triggered alerts.
+    Call this on a schedule (e.g. Railway Cron: every 30 minutes).
+    """
+    summary = _engine.get_summary()
+    fired = check_and_fire(summary)
+    return {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "regime": summary.state.code.value,
+        "confidence": summary.state.confidence,
+        "confidence_delta": summary.state.confidence_delta,
+        "alerts_fired": fired,
+        "alerts_count": len(fired),
+    }
+
+@app.get("/alerts/status", tags=["Alerts"])
+def alerts_status():
+    """Current alert system status and configuration."""
+    return get_alert_status()
+
+@app.post("/alerts/test", tags=["Alerts"])
+async def alerts_test():
+    """
+    Send a test alert email to verify configuration.
+    Requires RESEND_API_KEY and ALERT_EMAIL_TO to be set.
+    """
+    import os, httpx as _httpx
+    api_key = os.getenv("RESEND_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="RESEND_API_KEY not configured.")
+    to_email = os.getenv("ALERT_EMAIL_TO", "")
+    if not to_email:
+        raise HTTPException(status_code=503, detail="ALERT_EMAIL_TO not configured.")
+
+    summary = _engine.get_summary()
+    state = summary.state
+    from engine import REGIME_META
+    meta = REGIME_META.get(state.code.value)
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:500px;margin:40px auto;padding:32px;background:#fff;border-radius:12px;border:1px solid #e2e8f0">
+      <div style="font-family:Georgia,serif;font-size:20px;font-weight:700;color:#0f1923;margin-bottom:16px">GrineOS Test Alert</div>
+      <p style="color:#475569;margin-bottom:16px">Your alert system is configured correctly.</p>
+      <div style="background:#f8f9fb;border-radius:8px;padding:16px;font-family:'Courier New',monospace;font-size:13px;color:#1a2332">
+        <div>Current Regime: <strong style="color:{meta.color if meta else '#16a34a'}">{state.code.value}</strong></div>
+        <div>Confidence: {state.confidence:.0f}%</div>
+        <div>Delta: {state.confidence_delta:+.1f} pts</div>
+      </div>
+      <p style="color:#94a3b8;font-size:12px;margin-top:16px">GrineOS Engine A &middot; KG&Co Capital Advisory</p>
+    </div>
+    """
+    async with _httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "from": f"GrineOS Alerts <{os.getenv('ALERT_EMAIL_FROM', 'onboarding@resend.dev')}>",
+                "to": [to_email],
+                "subject": f"GrineOS Test Alert - {state.code.value} {state.confidence:.0f}%",
+                "html": html,
+            }
+        )
+    if resp.status_code in (200, 201):
+        return {"sent": True, "to": to_email, "regime": state.code.value}
+    raise HTTPException(status_code=502, detail=f"Resend error: {resp.text[:200]}")
