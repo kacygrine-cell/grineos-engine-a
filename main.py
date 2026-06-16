@@ -1,4 +1,6 @@
 import os
+import json as _json
+import re as _re
 import httpx
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +33,7 @@ app.add_middleware(
 _engine = EngineA()
 
 
+#  Health 
 @app.get("/", tags=["Health"])
 def health():
     return {
@@ -42,36 +45,31 @@ def health():
     }
 
 
+#  Regime endpoints 
 @app.get("/regime/summary", response_model=RegimeSummary, tags=["Regime"])
 def get_summary():
     return _engine.get_summary()
 
-
 @app.get("/regime/state", response_model=RegimeState, tags=["Regime"])
 def get_state():
     return _engine.get_summary().state
-
 
 @app.get("/regime/drivers", tags=["Regime"])
 def get_drivers():
     state = _engine.get_summary().state
     return {"regime": state.code, "drivers": state.drivers, "timestamp": state.timestamp}
 
-
 @app.get("/regime/exposure", response_model=ExposureMap, tags=["Regime"])
 def get_exposure():
     return _engine.get_summary().exposure
-
 
 @app.get("/regime/narrative", response_model=Narrative, tags=["Regime"])
 def get_narrative():
     return _engine.get_summary().narrative
 
-
 @app.get("/regime/transitions", response_model=List[TransitionProb], tags=["Regime"])
 def get_transitions():
     return _engine.get_summary().transitions
-
 
 @app.get("/regime/history", tags=["Regime"])
 def get_history(days: int = Query(default=90, ge=1, le=365)):
@@ -91,7 +89,6 @@ def get_history(days: int = Query(default=90, ge=1, le=365)):
         ],
     }
 
-
 @app.post("/regime/simulate", response_model=RegimeSummary, tags=["Simulation"])
 def simulate(req: SimulateRequest):
     return _engine.simulate(
@@ -100,7 +97,6 @@ def simulate(req: SimulateRequest):
         liquidity=req.liquidity,
         volatility=req.volatility,
     )
-
 
 @app.get("/regime/meta", tags=["Metadata"])
 def get_meta():
@@ -117,7 +113,7 @@ def get_meta():
     }
 
 
-# Agent
+#  Agent 
 class AgentMessage(BaseModel):
     role: str
     content: str
@@ -132,23 +128,19 @@ class AgentResponse(BaseModel):
     regime: str
     confidence: float
 
-
 @app.post("/agent/chat", response_model=AgentResponse, tags=["Agent"])
 async def agent_chat(req: AgentRequest):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured on this server.")
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured.")
 
     summary = _engine.get_summary()
     state = summary.state
-
     exposure_lines = " | ".join(
         f"{r.asset_class}: {r.signal}" for r in summary.exposure.rows
     ) if summary.exposure else "not available"
-
     narrative_text = summary.narrative.text if summary.narrative else "not available"
     risk_flag = summary.narrative.risk_flag if summary.narrative else "not available"
-
     g = state.drivers.get("growth")
     i = state.drivers.get("inflation")
     l = state.drivers.get("liquidity")
@@ -183,28 +175,17 @@ async def agent_chat(req: AgentRequest):
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 800,
-                "system": system_prompt,
-                "messages": messages,
-            }
+            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+            json={"model": "claude-sonnet-4-20250514", "max_tokens": 800, "system": system_prompt, "messages": messages}
         )
-
     if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Anthropic API error {resp.status_code}: {resp.text[:200]}")
-
+        raise HTTPException(status_code=502, detail=f"Anthropic error {resp.status_code}: {resp.text[:200]}")
     data = resp.json()
     reply = data["content"][0]["text"] if data.get("content") else "No response."
     return AgentResponse(response=reply, regime=state.code.value, confidence=state.confidence)
 
 
-# Alerts
+#  Alerts 
 from engine.alert import check_and_fire, get_alert_status
 
 class AlertConfigRequest(BaseModel):
@@ -236,11 +217,9 @@ async def alerts_test():
     to_email = os.getenv("ALERT_EMAIL_TO", "")
     if not to_email:
         raise HTTPException(status_code=503, detail="ALERT_EMAIL_TO not configured.")
-
     summary = _engine.get_summary()
     state = summary.state
     meta = REGIME_META.get(state.code.value)
-
     html = (
         '<div style="font-family:Arial,sans-serif;max-width:500px;margin:40px auto;padding:32px;'
         'background:#fff;border-radius:12px;border:1px solid #e2e8f0">'
@@ -248,14 +227,11 @@ async def alerts_test():
         'GrineOS Test Alert</div>'
         '<p style="color:#475569;margin-bottom:16px">Your alert system is configured correctly.</p>'
         '<div style="background:#f8f9fb;border-radius:8px;padding:16px;font-family:Courier New,monospace;font-size:13px;color:#1a2332">'
-        f'<div>Current Regime: <strong style="color:{meta.color if meta else "#16a34a"}">{state.code.value}</strong></div>'
+        f'<div>Regime: <strong style="color:{meta.color if meta else "#16a34a"}">{state.code.value}</strong></div>'
         f'<div>Confidence: {state.confidence:.0f}%</div>'
         f'<div>Delta: {state.confidence_delta:+.1f} pts</div>'
-        '</div>'
-        '<p style="color:#94a3b8;font-size:12px;margin-top:16px">GrineOS Engine A - KG&Co Capital Advisory</p>'
-        '</div>'
+        '</div></div>'
     )
-
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(
             "https://api.resend.com/emails",
@@ -272,7 +248,7 @@ async def alerts_test():
     raise HTTPException(status_code=502, detail=f"Resend error: {resp.text[:200]}")
 
 
-# Backtest
+#  Backtest 
 from engine.backtest import run_backtest
 
 class BacktestHolding(BaseModel):
@@ -299,13 +275,7 @@ async def backtest_run(req: BacktestRequest):
     return result
 
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8001))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
-
-
-# Investment Committee Brief endpoint
+#  Investment Committee Brief 
 class ICBriefRequest(BaseModel):
     portfolio_summary: Optional[str] = None
     client_name: Optional[str] = "Investment Committee"
@@ -321,10 +291,6 @@ class ICBriefResponse(BaseModel):
 
 @app.post("/ic/brief", tags=["IC Mode"])
 async def ic_brief(req: ICBriefRequest):
-    """
-    Generate a full Investment Committee brief using live Engine A data and Claude.
-    Returns structured content ready for PPTX/PDF rendering.
-    """
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured.")
@@ -332,7 +298,6 @@ async def ic_brief(req: ICBriefRequest):
     summary = _engine.get_summary()
     state = summary.state
     meta = REGIME_META.get(state.code.value)
-
     g = state.drivers.get("growth")
     i = state.drivers.get("inflation")
     l = state.drivers.get("liquidity")
@@ -349,14 +314,17 @@ async def ic_brief(req: ICBriefRequest):
     ) if summary.transitions else ""
 
     system_prompt = """You are a senior CIO preparing a formal Investment Committee brief.
-Your output must be a JSON object with exactly these keys (no other keys, no markdown fences):
+Your output must be a JSON object with exactly these keys (no markdown fences):
 
 {
   "executive_summary": "2-3 sentence overview of current regime and key implications",
   "what_changed": ["bullet 1", "bullet 2", "bullet 3"],
   "top_recommendations": [
     {"action": "action text", "rationale": "one sentence why", "urgency": "immediate|this week|this month"},
-    ...5 items total
+    {"action": "action text", "rationale": "one sentence why", "urgency": "immediate|this week|this month"},
+    {"action": "action text", "rationale": "one sentence why", "urgency": "immediate|this week|this month"},
+    {"action": "action text", "rationale": "one sentence why", "urgency": "immediate|this week|this month"},
+    {"action": "action text", "rationale": "one sentence why", "urgency": "immediate|this week|this month"}
   ],
   "historical_analogue": {"period": "e.g. 2017 Q2", "description": "2 sentences on similarity and what happened", "outcome": "what the right trade was"},
   "key_risks": ["risk 1", "risk 2", "risk 3"],
@@ -365,73 +333,50 @@ Your output must be a JSON object with exactly these keys (no other keys, no mar
 
 Be specific, institutional, and decisive. No hedging. Every recommendation must be actionable."""
 
-    user_prompt = f"""Generate an Investment Committee brief for {req.client_name}.
-
-LIVE REGIME STATE:
-Regime: {state.code.value} - {state.subtitle}
-Confidence: {state.confidence:.0f}% ({state.confidence_delta:+.1f} pts vs yesterday)
-Duration: {state.duration_days} days in this regime
-Narrative: {summary.narrative.text if summary.narrative else 'n/a'}
-
-DRIVER READINGS:
-Growth: {g.label if g else 'n/a'} ({g.score:+.2f}s)
-Inflation: {i.label if i else 'n/a'} ({i.score:+.2f}s)
-Liquidity: {l.label if l else 'n/a'} ({l.score:+.2f}s)
-Volatility: {v.label if v else 'n/a'} ({v.score:+.2f}s)
-
-ALLOCATION INSTINCT:
-{meta.instinct if meta else 'n/a'}
-
-LIVE EXPOSURE MAP:
-{exposure_text}
-
-30D TRANSITION PROBABILITIES:
-{transitions_text}
-
-KEY RISK: {summary.narrative.risk_flag if summary.narrative else 'n/a'}
-
-Portfolio context: {req.portfolio_summary or 'Institutional multi-asset portfolio'}"""
+    user_prompt = (
+        f"Generate an Investment Committee brief for {req.client_name}.\n\n"
+        f"LIVE REGIME STATE:\n"
+        f"Regime: {state.code.value} - {state.subtitle}\n"
+        f"Confidence: {state.confidence:.0f}% ({state.confidence_delta:+.1f} pts vs yesterday)\n"
+        f"Duration: {state.duration_days} days in this regime\n"
+        f"Narrative: {summary.narrative.text if summary.narrative else 'n/a'}\n\n"
+        f"DRIVER READINGS:\n"
+        f"Growth: {g.label if g else 'n/a'} ({g.score:+.2f}s)\n"
+        f"Inflation: {i.label if i else 'n/a'} ({i.score:+.2f}s)\n"
+        f"Liquidity: {l.label if l else 'n/a'} ({l.score:+.2f}s)\n"
+        f"Volatility: {v.label if v else 'n/a'} ({v.score:+.2f}s)\n\n"
+        f"ALLOCATION INSTINCT:\n{meta.instinct if meta else 'n/a'}\n\n"
+        f"LIVE EXPOSURE MAP:\n{exposure_text}\n\n"
+        f"30D TRANSITION PROBABILITIES:\n{transitions_text}\n\n"
+        f"KEY RISK: {summary.narrative.risk_flag if summary.narrative else 'n/a'}\n\n"
+        f"Portfolio context: {req.portfolio_summary or 'Institutional multi-asset portfolio'}"
+    )
 
     async with httpx.AsyncClient(timeout=45.0) as client:
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 2000,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": user_prompt}],
-            }
+            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+            json={"model": "claude-sonnet-4-20250514", "max_tokens": 2000, "system": system_prompt,
+                  "messages": [{"role": "user", "content": user_prompt}]}
         )
 
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Anthropic error: {resp.text[:200]}")
 
     raw = resp.json()["content"][0]["text"]
-
-    import json as _json
-    import re as _re
     clean = _re.sub(r"```(?:json)?|```", "", raw).strip()
     content = _json.loads(clean)
 
-    exposure_rows = []
-    if summary.exposure:
-        exposure_rows = [
-            {"asset_class": r.asset_class, "signal": r.signal,
-             "direction": r.direction, "confidence": r.confidence}
-            for r in summary.exposure.rows
-        ]
+    exposure_rows = [
+        {"asset_class": r.asset_class, "signal": r.signal,
+         "direction": r.direction, "confidence": r.confidence}
+        for r in summary.exposure.rows
+    ] if summary.exposure else []
 
-    transitions_list = []
-    if summary.transitions:
-        transitions_list = [
-            {"regime": t.regime, "probability": t.probability}
-            for t in summary.transitions
-        ]
+    transitions_list = [
+        {"regime": t.regime, "probability": t.probability}
+        for t in summary.transitions
+    ] if summary.transitions else []
 
     return ICBriefResponse(
         regime=state.code.value,
@@ -450,13 +395,20 @@ Portfolio context: {req.portfolio_summary or 'Institutional multi-asset portfoli
             "risk_flag": summary.narrative.risk_flag if summary.narrative else "",
             "instinct": meta.instinct if meta else "",
             "drivers": {
-                "growth": {"label": g.label, "score": g.score} if g else {},
-                "inflation": {"label": i.label, "score": i.score} if i else {},
-                "liquidity": {"label": l.label, "score": l.score} if l else {},
+                "growth":     {"label": g.label, "score": g.score} if g else {},
+                "inflation":  {"label": i.label, "score": i.score} if i else {},
+                "liquidity":  {"label": l.label, "score": l.score} if l else {},
                 "volatility": {"label": v.label, "score": v.score} if v else {},
             },
             "exposure_rows": exposure_rows,
-            "transitions": transitions_list,
+            "transitions":   transitions_list,
             "color": meta.color if meta else "#16a34a",
         }
     )
+
+
+#  Entry point 
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8001))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
