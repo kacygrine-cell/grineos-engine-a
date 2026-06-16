@@ -262,7 +262,7 @@ class BacktestRequest(BaseModel):
     profile_multiplier: float = 1.0
 
 @app.post("/backtest/run", tags=["Backtest"])
-async def backtest_run(req: BacktestRequest):
+def backtest_run(req: BacktestRequest):
     period_map = {"1y": 1, "2y": 2, "3y": 3, "5y": 5}
     period_years = period_map.get(req.period, 3)
     holdings = [{"ticker": h.ticker, "weight": h.weight} for h in req.holdings]
