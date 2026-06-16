@@ -303,3 +303,160 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8001))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+
+
+# Investment Committee Brief endpoint
+class ICBriefRequest(BaseModel):
+    portfolio_summary: Optional[str] = None
+    client_name: Optional[str] = "Investment Committee"
+    since_days: int = 30
+
+class ICBriefResponse(BaseModel):
+    regime: str
+    confidence: float
+    subtitle: str
+    color: str
+    generated_at: str
+    content: dict
+
+@app.post("/ic/brief", tags=["IC Mode"])
+async def ic_brief(req: ICBriefRequest):
+    """
+    Generate a full Investment Committee brief using live Engine A data and Claude.
+    Returns structured content ready for PPTX/PDF rendering.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured.")
+
+    summary = _engine.get_summary()
+    state = summary.state
+    meta = REGIME_META.get(state.code.value)
+
+    g = state.drivers.get("growth")
+    i = state.drivers.get("inflation")
+    l = state.drivers.get("liquidity")
+    v = state.drivers.get("volatility")
+
+    exposure_text = "\n".join(
+        f"- {r.asset_class}: {r.signal} (confidence {r.confidence:.0f}%)"
+        for r in summary.exposure.rows
+    ) if summary.exposure else "Not available"
+
+    transitions_text = "\n".join(
+        f"- {t.regime}: {t.probability * 100:.0f}%"
+        for t in summary.transitions
+    ) if summary.transitions else ""
+
+    system_prompt = """You are a senior CIO preparing a formal Investment Committee brief.
+Your output must be a JSON object with exactly these keys (no other keys, no markdown fences):
+
+{
+  "executive_summary": "2-3 sentence overview of current regime and key implications",
+  "what_changed": ["bullet 1", "bullet 2", "bullet 3"],
+  "top_recommendations": [
+    {"action": "action text", "rationale": "one sentence why", "urgency": "immediate|this week|this month"},
+    ...5 items total
+  ],
+  "historical_analogue": {"period": "e.g. 2017 Q2", "description": "2 sentences on similarity and what happened", "outcome": "what the right trade was"},
+  "key_risks": ["risk 1", "risk 2", "risk 3"],
+  "alternative_scenario": {"trigger": "what would cause regime change", "new_regime": "regime name", "portfolio_action": "what to do immediately"}
+}
+
+Be specific, institutional, and decisive. No hedging. Every recommendation must be actionable."""
+
+    user_prompt = f"""Generate an Investment Committee brief for {req.client_name}.
+
+LIVE REGIME STATE:
+Regime: {state.code.value} - {state.subtitle}
+Confidence: {state.confidence:.0f}% ({state.confidence_delta:+.1f} pts vs yesterday)
+Duration: {state.duration_days} days in this regime
+Narrative: {summary.narrative.text if summary.narrative else 'n/a'}
+
+DRIVER READINGS:
+Growth: {g.label if g else 'n/a'} ({g.score:+.2f}s)
+Inflation: {i.label if i else 'n/a'} ({i.score:+.2f}s)
+Liquidity: {l.label if l else 'n/a'} ({l.score:+.2f}s)
+Volatility: {v.label if v else 'n/a'} ({v.score:+.2f}s)
+
+ALLOCATION INSTINCT:
+{meta.instinct if meta else 'n/a'}
+
+LIVE EXPOSURE MAP:
+{exposure_text}
+
+30D TRANSITION PROBABILITIES:
+{transitions_text}
+
+KEY RISK: {summary.narrative.risk_flag if summary.narrative else 'n/a'}
+
+Portfolio context: {req.portfolio_summary or 'Institutional multi-asset portfolio'}"""
+
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 2000,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user_prompt}],
+            }
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Anthropic error: {resp.text[:200]}")
+
+    raw = resp.json()["content"][0]["text"]
+
+    import json as _json
+    import re as _re
+    clean = _re.sub(r"```(?:json)?|```", "", raw).strip()
+    content = _json.loads(clean)
+
+    exposure_rows = []
+    if summary.exposure:
+        exposure_rows = [
+            {"asset_class": r.asset_class, "signal": r.signal,
+             "direction": r.direction, "confidence": r.confidence}
+            for r in summary.exposure.rows
+        ]
+
+    transitions_list = []
+    if summary.transitions:
+        transitions_list = [
+            {"regime": t.regime, "probability": t.probability}
+            for t in summary.transitions
+        ]
+
+    return ICBriefResponse(
+        regime=state.code.value,
+        confidence=state.confidence,
+        subtitle=state.subtitle,
+        color=meta.color if meta else "#16a34a",
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        content={
+            **content,
+            "regime": state.code.value,
+            "subtitle": state.subtitle,
+            "confidence": state.confidence,
+            "confidence_delta": state.confidence_delta,
+            "duration_days": state.duration_days,
+            "narrative": summary.narrative.text if summary.narrative else "",
+            "risk_flag": summary.narrative.risk_flag if summary.narrative else "",
+            "instinct": meta.instinct if meta else "",
+            "drivers": {
+                "growth": {"label": g.label, "score": g.score} if g else {},
+                "inflation": {"label": i.label, "score": i.score} if i else {},
+                "liquidity": {"label": l.label, "score": l.score} if l else {},
+                "volatility": {"label": v.label, "score": v.score} if v else {},
+            },
+            "exposure_rows": exposure_rows,
+            "transitions": transitions_list,
+            "color": meta.color if meta else "#16a34a",
+        }
+    )
