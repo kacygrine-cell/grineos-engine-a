@@ -205,7 +205,7 @@ async def agent_chat(req: AgentRequest):
 
 
 # Alerts
-from engine.alerts import check_and_fire, get_alert_status
+from engine.alert import check_and_fire, get_alert_status
 
 class AlertConfigRequest(BaseModel):
     email: str
