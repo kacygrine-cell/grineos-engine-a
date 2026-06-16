@@ -12,7 +12,7 @@ import numpy as np
 from typing import Optional
 from functools import lru_cache
 
-from engine.data.market_data import fetch_driver_data, compute_driver_scores
+from engine.market_data import fetch_driver_data, compute_driver_scores
 
 
 # Regime classification thresholds
