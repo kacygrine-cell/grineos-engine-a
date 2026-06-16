@@ -3,10 +3,9 @@ uvicorn[standard]==0.29.0
 pydantic==2.7.1
 python-dotenv==1.0.1
 httpx==0.27.0
+yfinance==0.2.38
+pandas==2.2.2
+numpy==1.26.4
 
-# Optional: live data connectors
-# Uncomment to activate each connector
+# Optional: FRED connector
 # fredapi==0.5.1
-# yfinance==0.2.38
-# pandas==2.2.2
-# numpy==1.26.4
