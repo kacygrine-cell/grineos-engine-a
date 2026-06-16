@@ -19,7 +19,7 @@ import pandas as pd
 from typing import Optional
 from dataclasses import dataclass
 
-from engine.data.market_data import fetch_portfolio_prices
+from engine.market_data import fetch_portfolio_prices
 from engine.historical_regimes import reconstruct_regime_history
 
 
