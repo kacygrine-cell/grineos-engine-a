@@ -1028,140 +1028,167 @@ function NewsTab(){
 }
 
 function LearnTab(){
-  const[section,setSection]=useState('overview');
-  return(
-    <div style={{padding:"32px 40px",maxWidth:1000,animation:"fadeUp .4s ease"}}>
-      <div style={{marginBottom:28,borderBottom:`1px solid ${C.border}`,paddingBottom:16}}>
-        <h2 style={{fontFamily:T.display,fontSize:26,fontWeight:600,color:C.navy,fontStyle:"italic"}}>Learn Regime Intelligence</h2>
-      </div>
-      <nav style={{display:'flex',gap:16,marginBottom:32,borderBottom:`1px solid ${C.borderLight}`,paddingBottom:16}}>
-        {[['overview','Platform Overview'],['regimes','Market Regimes'],['metrics','Key Metrics'],['glossary','Glossary']].map(([k,l])=>(
-          <button key={k} onClick={()=>setSection(k)} style={{background:'none',border:'none',fontSize:14,fontWeight:section===k?600:400,color:section===k?C.navy:C.soft,cursor:'pointer',padding:'8px 12px',borderRadius:6,backgroundColor:section===k?C.accentLight:'transparent'}}>{l}</button>
-        ))}
-      </nav>
-      {section==='overview'&&(
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:20}}>
-          {[{title:"Demo Portfolio",desc:"$2M portfolio with regime-aware analytics.",features:["Real portfolio data","Regime impact","Interactive charts"]},{title:"AI Agent",desc:"CIO-level guidance for allocation decisions.",features:["Structured responses","Regime context","Real-time analysis"]},{title:"Optimizer",desc:"Regime-constrained portfolio optimization.",features:["Max Sharpe / Min Var","Regime adjustments","Turnover analysis"]},{title:"Analytics",desc:"Comprehensive risk decomposition.",features:["Risk metrics","Factor exposure","Attribution"]}].map((f,i)=>(
-            <div key={i} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:20}}>
-              <h4 style={{fontSize:16,fontWeight:600,color:C.navy,marginBottom:8}}>{f.title}</h4>
-              <p style={{fontSize:14,color:C.soft,marginBottom:12,lineHeight:1.5}}>{f.desc}</p>
-              {f.features.map((feat,j)=><div key={j} style={{fontSize:12,color:C.navy,marginBottom:4,paddingLeft:12,position:'relative'}}><span style={{position:'absolute',left:0,color:C.green}}> </span>{feat}</div>)}
-            </div>
-          ))}
-        </div>
-      )}
-      {section==='regimes'&&(
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:20}}>
-          {Object.entries(REGIME_PARAMETERS).map(([k,r])=>(
-            <div key={k} style={{background:r.bgColor,border:`2px solid ${r.color}33`,borderRadius:12,padding:24,position:'relative'}}>
-              <div style={{position:'absolute',top:0,left:0,right:0,height:4,background:r.color,borderRadius:'12px 12px 0 0'}}/>
-              <h4 style={{fontSize:18,fontWeight:700,color:r.color,marginBottom:10,fontFamily:T.display}}>{r.label}</h4>
-              <p style={{fontSize:14,color:C.navy,lineHeight:1.5,marginBottom:12}}>{r.description}</p>
-              <div style={{fontSize:12,color:C.soft}}>Max Equity: {(r.equityMax*100).toFixed(0)}% . Min Cash: {(r.cashMin*100).toFixed(0)}%</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {section==='glossary'&&(
-        <div style={{display:'grid',gap:14}}>
-          {[{term:"Sharpe Ratio",def:"Risk-adjusted return: (Return - Risk-free Rate) / Volatility",ex:"Higher = better risk-adjusted performance"},{term:"Max Drawdown",def:"Peak-to-trough decline in portfolio value.",ex:"$1M to $850K = 15% drawdown"},{term:"VIX",def:"Expected market volatility over next 30 days.",ex:"VIX < 20 = low volatility"},{term:"Regime Detection",def:"Classifying market periods by volatility, momentum, liquidity.",ex:"2008 = Protection, 2017 = Expansion"},{term:"Effective N",def:"Herfindahl measure of true portfolio diversification.",ex:"> 5 = well-diversified"}].map((item,i)=>(
-            <div key={i} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:18}}>
-              <div style={{fontSize:16,fontWeight:600,color:C.navy,marginBottom:6,fontFamily:T.display}}>{item.term}</div>
-              <p style={{fontSize:14,color:C.navy,marginBottom:8,lineHeight:1.5}}>{item.def}</p>
-              <div style={{background:C.borderLight,padding:10,borderRadius:6,fontSize:12,color:C.soft,fontStyle:'italic'}}>Example: {item.ex}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+  const{regimeConfig}=useRegime();
+  const[selectedRegime,setSelectedRegime]=useState(regimeConfig.label||"SURGE");
 
-function OptimizerResult({data,regimeAdjustment}){
-  const{getActivePortfolio}=usePortfolio();
-  if(!data)return null;
-  const portfolioValue=getActivePortfolio()?.totalValue||2000000;
-  const isRegimeAware=!!regimeAdjustment;
-  const currentWeights=data.current_weights||{};
-  const targetWeights=data.target_weights||{};
-  const allocation=data.allocation||targetWeights;
-  const turnover=Object.keys({...currentWeights,...targetWeights}).reduce((sum,t)=>sum+Math.abs((targetWeights[t]||0)-(currentWeights[t]||0)),0)/2;
-  const metrics=[
-    {label:"Holdings Count",value:Object.keys(allocation).length.toString(),color:C.blue,regime:null},
-    {label:"Portfolio Turnover",value:`${(turnover*100).toFixed(1)}%`,color:C.gold,regime:null},
-    {label:"Expected Return",value:"8.7%",sub:"Annualized",color:C.green,regime:isRegimeAware&&regimeAdjustment?{color:regimeAdjustment.regime==='expansion'?C.green:C.gold,impact:((regimeAdjustment.return_impact||0)*100).toFixed(1)}:null},
-    {label:"Risk (Vol)",value:"11.2%",sub:"Annualized",color:C.red,regime:null}
-  ];
+  const REGIME_LIBRARY={
+    "SURGE":{color:"#16a34a",subtitle:"Risk Expansion",description:"The ideal environment for risk assets. Growth is accelerating, inflation is contained, liquidity is abundant, and volatility is suppressed. Every risk asset class tends to outperform.",
+      stats:{avg_sp500_return:"+18.4% annualised",avg_duration:"184 days",avg_vix:"13-16",avg_sharpe:"0.95"},
+      best_sectors:["Technology","Consumer Discretionary","Financials","Industrials","Materials"],
+      worst_sectors:["Utilities","Consumer Staples","Healthcare (defensive)"],
+      fed_behaviour:"On hold or cautiously hiking. Financial conditions easy.",
+      historical_examples:["2013   Post-QE3 expansion","2017   Synchronized global growth","2021 H1   Reopening surge","2003-2004   Post-dot-com recovery"],
+      allocation:"Max equity. Overweight credit and commodities. Floor cash. Duration short.",
+    },
+    "CRUISE":{color:"#22c55e",subtitle:"Cycle Momentum",description:"A maturing expansion. Growth is positive but leadership is narrowing. Inflation is beginning to tick up. The regime is healthy but late-cycle warning signs are emerging.",
+      stats:{avg_sp500_return:"+11.2% annualised",avg_duration:"210 days",avg_vix:"14-18",avg_sharpe:"0.72"},
+      best_sectors:["Financials","Energy","Value stocks","Healthcare"],
+      worst_sectors:["High-multiple growth","Long-duration bonds"],
+      fed_behaviour:"Hiking cycle underway or expected. Gradual tightening.",
+      historical_examples:["2018 Q1-Q3   Late cycle expansion","2014-2015   Post-taper recovery","2006-2007 Q1   Pre-crisis cruise"],
+      allocation:"Stay invested. Quality bias. Begin trimming duration. Add energy and financials.",
+    },
+    "PRESSURE":{color:"#b45309",subtitle:"Inflation Squeeze",description:"Growth is decelerating while inflation remains elevated. The classic late-cycle squeeze. The 60/40 portfolio is structurally challenged. Real assets outperform nominal.",
+      stats:{avg_sp500_return:"+2.1% annualised",avg_duration:"140 days",avg_vix:"18-24",avg_sharpe:"0.18"},
+      best_sectors:["Energy","Materials","Commodities","Real Estate (short leases)"],
+      worst_sectors:["Long-duration bonds","High-P/E growth","Consumer discretionary"],
+      fed_behaviour:"Aggressively hiking. Behind the curve or catching up.",
+      historical_examples:["2022 H1   Inflation shock","2007 Q3-Q4   Pre-GFC pressure","1979-1980   Volcker squeeze"],
+      allocation:"Cut duration hard. Overweight commodities and real assets. Reduce long-duration equities.",
+    },
+    "SLIDE":{color:"#f97316",subtitle:"Growth Breakdown",description:"Growth is in recession territory. Earnings are deteriorating and credit spreads are widening. Capital preservation becomes the primary objective.",
+      stats:{avg_sp500_return:"-8.4% annualised",avg_duration:"120 days",avg_vix:"22-30",avg_sharpe:"-0.42"},
+      best_sectors:["Consumer Staples","Healthcare","Utilities","Short-term bonds"],
+      worst_sectors:["Cyclicals","Small caps","Emerging markets","High yield"],
+      fed_behaviour:"Cutting or about to cut. Trying to engineer a recovery.",
+      historical_examples:["2001   Dot-com bust","2008 Q1-Q2   Pre-Lehman slide","2020 Q1   COVID shock","2022 Q4   Recession fears"],
+      allocation:"De-risk immediately. Defensives and quality bonds only. Raise cash.",
+    },
+    "SHOCK":{color:"#dc2626",subtitle:"Liquidity Break",description:"A liquidity crisis. All asset classes reprice simultaneously. Correlations go to 1. Capital preservation is the only objective. There is no alpha in a SHOCK regime   only survival.",
+      stats:{avg_sp500_return:"-28.7% annualised",avg_duration:"47 days",avg_vix:"35-80",avg_sharpe:"-1.82"},
+      best_sectors:["USD cash","Short-term Treasuries","Gold (eventually)"],
+      worst_sectors:["Everything else   especially credit and EM"],
+      fed_behaviour:"Emergency cuts. QE. Backstop facilities. All tools deployed.",
+      historical_examples:["2008 Q3-Q4   Lehman crisis","2020 March   COVID liquidity freeze","2022 UK Gilt crisis","2011   Euro sovereign debt crisis"],
+      allocation:"Cash and sovereigns only. No risk. Dry powder for the recovery.",
+    },
+    "FOG":{color:"#7c3aed",subtitle:"Regime Uncertainty",description:"Mixed signals. The model cannot reach conviction above threshold. Dangerous moment for high-conviction bets in either direction.",
+      stats:{avg_sp500_return:"+4.2% annualised",avg_duration:"65 days",avg_vix:"17-22",avg_sharpe:"0.31"},
+      best_sectors:["Quality factor","Low volatility","Balanced funds"],
+      worst_sectors:["High beta","High conviction thematic positions"],
+      fed_behaviour:"Mixed messaging. Watching data. Unclear path.",
+      historical_examples:["2015 mid-year   Taper tantrum aftermath","2019 Q2   Trade war uncertainty","2023 Q2   Soft landing vs recession debate"],
+      allocation:"Neutral positioning. Reduce sizing. Diversify. Wait for confirmation before acting.",
+    },
+  };
+
+  const REGIME_ORDER=["SURGE","CRUISE","PRESSURE","SLIDE","SHOCK","FOG"];
+  const RCOLS={"SURGE":"#16a34a","CRUISE":"#22c55e","PRESSURE":"#b45309","SLIDE":"#f97316","SHOCK":"#dc2626","FOG":"#7c3aed"};
+  const data=REGIME_LIBRARY[selectedRegime];
+
   return(
-    <div style={{animation:"fadeUp 0.4s ease"}}>
-      <h3 style={{fontSize:18,fontWeight:600,color:C.navy,marginBottom:4,fontFamily:T.display}}>Optimization Results</h3>
-      {isRegimeAware&&<div style={{fontSize:12,color:regimeAdjustment?.regime==='expansion'?C.green:C.gold,fontWeight:500,marginBottom:20}}>Regime-Optimized ({regimeAdjustment?.regime?.toUpperCase()} constraints)</div>}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:16,marginBottom:32}}>
-        {metrics.map((m,i)=><MetricCard key={i} {...m}/>)}
+    <div style={{padding:"32px 40px",maxWidth:1100,animation:"fadeUp .4s ease"}}>
+      <div style={{marginBottom:24,borderBottom:`1px solid ${C.border}`,paddingBottom:16}}>
+        <div style={{fontSize:12,color:C.soft,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:500,marginBottom:6}}>Regime Library</div>
+        <h2 style={{fontFamily:T.display,fontSize:26,fontWeight:600,color:C.navy,fontStyle:"italic"}}>Historical regime reference.</h2>
+        <p style={{fontSize:13,color:C.soft,marginTop:4}}>Each regime has a distinct character, history, and playbook. Click a regime to explore.</p>
       </div>
-      {Object.keys(currentWeights).length>0&&Object.keys(targetWeights).length>0?(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:32,marginBottom:24}}>
-          <div>
-            <h4 style={{fontSize:14,fontWeight:600,color:C.soft,marginBottom:16,textTransform:"uppercase",letterSpacing:"0.08em"}}>Current Allocation</h4>
-            <div style={{display:"grid",gridTemplateColumns:"200px 1fr",gap:16}}>
-              <DonutChart data={Object.entries(currentWeights).map(([k,v])=>({label:k,value:(v/100)*portfolioValue}))} totalValue={portfolioValue}/>
-              <HBarChart data={Object.entries(currentWeights).map(([k,v])=>({label:k,value:v,display:`${v.toFixed(1)}%`}))}/>
+
+      {/* Regime selector */}
+      <div style={{display:"flex",gap:8,marginBottom:28,flexWrap:"wrap"}}>
+        {REGIME_ORDER.map(r=>{
+          const isActive=r===selectedRegime;
+          const isCurrent=r===regimeConfig.label;
+          return(
+            <button key={r} onClick={()=>setSelectedRegime(r)} style={{padding:"10px 18px",borderRadius:8,border:`2px solid ${isActive?RCOLS[r]:C.border}`,background:isActive?RCOLS[r]+"12":"transparent",color:isActive?RCOLS[r]:C.soft,fontWeight:isActive?700:400,fontSize:12,cursor:"pointer",fontFamily:T.mono,transition:"all 0.15s",position:"relative"}}>
+              {r}
+              {isCurrent&&<span style={{position:"absolute",top:-4,right:-4,width:8,height:8,borderRadius:"50%",background:RCOLS[r],border:"2px solid white"}}/>}
+            </button>
+          );
+        })}
+      </div>
+
+      {data&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
+          {/* Left column */}
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {/* Overview */}
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:20,borderTop:`3px solid ${data.color}`}}>
+              <div style={{fontSize:11,fontWeight:700,color:data.color,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8,fontFamily:T.mono}}>{selectedRegime} - {data.subtitle}</div>
+              <p style={{fontSize:13,color:C.navy,lineHeight:1.65}}>{data.description}</p>
+            </div>
+
+            {/* Key stats */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {[["Avg S&P Return",data.stats.avg_sp500_return],["Avg Duration",data.stats.avg_duration],["Avg VIX",data.stats.avg_vix],["Avg Sharpe",data.stats.avg_sharpe]].map(([label,value],i)=>(
+                <div key={i} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"10px 14px"}}>
+                  <div style={{fontSize:9,color:C.faint,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:3,fontFamily:T.mono}}>{label}</div>
+                  <div style={{fontSize:16,fontWeight:600,color:data.color,fontFamily:T.display}}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Allocation */}
+            <div style={{background:data.color+"08",border:`1px solid ${data.color}33`,borderRadius:8,padding:16}}>
+              <div style={{fontSize:10,fontWeight:700,color:data.color,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8,fontFamily:T.mono}}>Allocation Playbook</div>
+              <p style={{fontSize:13,color:C.navy,lineHeight:1.6}}>{data.allocation}</p>
             </div>
           </div>
-          <div>
-            <h4 style={{fontSize:14,fontWeight:600,color:isRegimeAware?C.green:C.navy,marginBottom:16,textTransform:"uppercase",letterSpacing:"0.08em"}}>{isRegimeAware?"Regime-Optimized":"Target Allocation"}</h4>
-            <div style={{display:"grid",gridTemplateColumns:"200px 1fr",gap:16}}>
-              <DonutChart data={Object.entries(targetWeights).map(([k,v])=>({label:k,value:(v/100)*portfolioValue}))} totalValue={portfolioValue}/>
-              <HBarChart data={Object.entries(targetWeights).map(([k,v])=>({label:k,value:v,display:`${v.toFixed(1)}%`}))}/>
-            </div>
-          </div>
-        </div>
-      ):(
-        <div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:24,marginBottom:24}}>
-          <DonutChart data={Object.entries(allocation).map(([k,v])=>({label:k,value:(v/100)*portfolioValue}))} totalValue={portfolioValue}/>
-          <HBarChart data={Object.entries(allocation).map(([k,v])=>({label:k,value:v,display:`${v.toFixed(1)}%`}))}/>
-        </div>
-      )}
-    </div>
-  );
-}
 
-function AnalyticsResult({data,regimeAdjustment}){
-  if(!data)return null;
-  const portfolioVol=data.portfolio_vol||0,portfolioVar=data.portfolio_var||0,trackingError=data.tracking_error||0,effectiveN=data.effective_n||0;
-  const factors=data.factors||[];
-  const riskMetrics=[
-    {label:"Portfolio Volatility",value:`${(portfolioVol*100).toFixed(1)}%`,color:C.gold,regime:!!regimeAdjustment&&regimeAdjustment?{color:regimeAdjustment.regime==='expansion'?C.green:C.red,impact:((regimeAdjustment.risk_impact||0)*100).toFixed(1)}:null},
-    {label:"Portfolio VaR",value:`${(Math.abs(portfolioVar)*100).toFixed(1)}%`,color:C.red,regime:null},
-    {label:"Tracking Error",value:`${(trackingError*100).toFixed(1)}%`,color:C.blue,regime:null},
-    {label:"Effective N",value:effectiveN?effectiveN.toFixed(0):"-",sub:"Diversification",color:C.navy,regime:null}
-  ];
-  return(
-    <div style={{animation:"fadeUp 0.4s ease"}}>
-      <h3 style={{fontSize:18,fontWeight:600,color:C.navy,marginBottom:20,fontFamily:T.display}}>Risk Analytics</h3>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:16,marginBottom:32}}>
-        {riskMetrics.map((m,i)=><MetricCard key={i} {...m}/>)}
-      </div>
-      {factors.length>0&&(
-        <div style={{background:C.white,borderRadius:8,border:`1px solid ${C.border}`,padding:24,marginBottom:24}}>
-          <h4 style={{fontSize:14,fontWeight:600,color:C.navy,marginBottom:16,textTransform:"uppercase",letterSpacing:"0.08em"}}>Factor Exposure</h4>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:16}}>
-            {factors.map((f,i)=>{const fd=typeof f==='string'?{name:f,exposure:0}:f;return(
-              <div key={i} style={{textAlign:"center"}}>
-                <div style={{fontSize:11,color:C.soft,marginBottom:4,textTransform:"uppercase"}}>{fd.name||`Factor ${i+1}`}</div>
-                <div style={{fontSize:16,fontWeight:600,color:Math.abs(fd.exposure||0)>0.1?C.navy:C.faint}}>{(fd.exposure||0).toFixed(2)}</div>
+          {/* Right column */}
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {/* Sectors */}
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:20}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.soft,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12,fontFamily:T.mono}}>Sector Positioning</div>
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:10,color:"#16a34a",fontWeight:600,marginBottom:6,fontFamily:T.mono}}>Best Performing</div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {data.best_sectors.map((s,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{color:"#16a34a",fontSize:10}}>+</span>
+                      <span style={{fontSize:12,color:C.navy}}>{s}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            );})}
+              <div>
+                <div style={{fontSize:10,color:"#dc2626",fontWeight:600,marginBottom:6,fontFamily:T.mono}}>Avoid / Underweight</div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {data.worst_sectors.map((s,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{color:"#dc2626",fontSize:10}}>-</span>
+                      <span style={{fontSize:12,color:C.navy}}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Fed behaviour */}
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:16}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.soft,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8,fontFamily:T.mono}}>Fed Behaviour</div>
+              <p style={{fontSize:13,color:C.navy,lineHeight:1.6}}>{data.fed_behaviour}</p>
+            </div>
+
+            {/* Historical examples */}
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:16}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.soft,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10,fontFamily:T.mono}}>Historical Examples</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {data.historical_examples.map((ex,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"6px 0",borderBottom:i<data.historical_examples.length-1?`1px solid ${C.borderLight}`:"none"}}>
+                    <span style={{width:6,height:6,borderRadius:2,background:data.color,display:"inline-block",flexShrink:0,marginTop:4}}/>
+                    <span style={{fontSize:12,color:C.navy,lineHeight:1.5}}>{ex}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
-      <div style={{background:C.white,borderRadius:8,border:`1px solid ${C.border}`,padding:20}}>
-        <h4 style={{fontSize:14,fontWeight:600,color:C.navy,marginBottom:16,textTransform:"uppercase",letterSpacing:"0.08em"}}>Risk Decomposition</h4>
-        <DataTable headers={["Component","Contribution","% of Total"]} rows={[["Systematic Risk",`${(portfolioVol*0.7*100).toFixed(1)}%`,"70%"],["Idiosyncratic Risk",`${(portfolioVol*0.3*100).toFixed(1)}%`,"30%"],["Factor Risk",`${(portfolioVol*0.6*100).toFixed(1)}%`,"60%"],["Specific Risk",`${(portfolioVol*0.4*100).toFixed(1)}%`,"40%"],["Active Risk",`${(trackingError*100).toFixed(1)}%`,"-"]]}/>
-      </div>
     </div>
   );
 }
+
 
 function BacktestResult({data,regimeAdjustment}){
   if(!data||!data.metrics)return null;
@@ -1731,54 +1758,100 @@ function ProfileSettings() {
 
 // -- Profile-aware Exposure Map ------------------------------------------------
 function ExposureMapPanel() {
-  const { regimeConfig } = useRegime();
-  const { profile } = useRiskProfile();
-  const exposure = regimeConfig.exposure;
-  if (!exposure || !exposure.rows) return <div style={{ color: C.soft, fontSize: 13, padding: 16, background: C.borderLight, borderRadius: 8 }}>Loading live exposure map </div>;
-
-  const mult = getProfileMultiplier(regimeConfig.label, profile);
-  const sigColors = { "MAX OVERWEIGHT": C.green, "OVERWEIGHT": "#22c55e", "NEUTRAL": C.soft, "FLOOR": C.gold, "ELEVATED": C.gold, "UNDERWEIGHT": "#f97316", "MAX UNDERWEIGHT": C.red, "MAXIMUM": C.red };
-  const dirText = { "up2": "  ", "up": " ", "--": "-", "dn": " ", "dn2": "  " };
-
-  const profileLabel = profile.risk_tolerance.charAt(0).toUpperCase() + profile.risk_tolerance.slice(1);
-
-  return (
+  const{regimeConfig}=useRegime();
+  const{profile}=useRiskProfile();
+  const exposure=regimeConfig.exposure;
+  const[openRow,setOpenRow]=useState(null);
+  if(!exposure||!exposure.rows)return<div style={{color:C.soft,fontSize:13,padding:16,background:C.borderLight,borderRadius:8}}>Loading live exposure map...</div>;
+  const mult=getProfileMultiplier(regimeConfig.label,profile);
+  const sigColors={"MAX OVERWEIGHT":C.green,"OVERWEIGHT":"#22c55e","NEUTRAL":C.soft,"FLOOR":C.gold,"ELEVATED":C.gold,"UNDERWEIGHT":"#f97316","MAX UNDERWEIGHT":C.red,"MAXIMUM":C.red};
+  const dirText={"up2":"++","up":"+","--":"-","dn":"--","dn2":"--"};
+  const profileLabel=profile.risk_tolerance.charAt(0).toUpperCase()+profile.risk_tolerance.slice(1);
+  const drivers=regimeConfig.drivers||{};
+  const g=drivers.growth,inf=drivers.inflation,liq=drivers.liquidity,vol=drivers.volatility;
+  const getWhy=(assetClass,signal)=>{
+    const r=[];
+    if(assetClass==="Equities"){
+      if(g&&g.score>0.5)r.push(`Growth accelerating (${g.score>0?"+":""}${g.score.toFixed(1)}s)`);
+      if(vol&&vol.score<-0.3)r.push(`Volatility suppressed (${vol.score.toFixed(1)}s)`);
+      if(liq&&liq.score>0.3)r.push(`Liquidity abundant (${liq.score.toFixed(1)}s)`);
+      if(g&&g.score<-0.5)r.push(`Growth decelerating (${g.score.toFixed(1)}s)`);
+    }else if(assetClass==="Duration"){
+      if(inf&&inf.score>0.5)r.push(`Inflation rising (${inf.score.toFixed(1)}s)`);
+      if(g&&g.score<-0.3)r.push(`Growth softening (${g.score.toFixed(1)}s)`);
+      if(liq&&liq.score<-0.3)r.push(`Liquidity tightening (${liq.score.toFixed(1)}s)`);
+    }else if(assetClass==="Commodities"){
+      if(inf&&inf.score>0.3)r.push(`Inflation momentum (${inf.score.toFixed(1)}s)`);
+      if(liq&&liq.score>0.3)r.push(`Liquidity supportive`);
+    }else if(assetClass==="Credit (HY)"){
+      if(g&&g.score>0.3)r.push(`Growth positive (${g.score.toFixed(1)}s)`);
+      if(liq&&liq.score>0.3)r.push(`Credit spreads tight`);
+      if(vol&&vol.score<0)r.push(`Low volatility environment`);
+    }else if(assetClass==="Cash"){
+      if(signal==="FLOOR")r.push(`${regimeConfig.label}: opportunity cost of cash is high`);
+      else if(signal==="MAXIMUM")r.push(`Liquidity crisis: preserve dry powder`);
+      else r.push(`Defensive positioning buffer`);
+    }
+    if(!r.length)r.push(`${regimeConfig.label} regime allocation instinct`);
+    return r;
+  };
+  return(
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: C.navy, textTransform: "uppercase", letterSpacing: "0.08em" }}>Live Exposure Map</h3>
-        <div style={{ display: "flex", gap: 6 }}>
-          <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: regimeConfig.bgColor, color: regimeConfig.color, fontWeight: 600, fontFamily: T.mono }}>{regimeConfig.label}</span>
-          <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: C.accentLight, color: C.navy, fontWeight: 600, fontFamily: T.mono }}>{profileLabel} . {(mult * 100).toFixed(0)}%</span>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <h3 style={{fontSize:13,fontWeight:600,color:C.navy,textTransform:"uppercase",letterSpacing:"0.08em"}}>Live Exposure Map</h3>
+        <div style={{display:"flex",gap:6}}>
+          <span style={{fontSize:10,padding:"3px 8px",borderRadius:4,background:regimeConfig.bgColor,color:regimeConfig.color,fontWeight:600,fontFamily:T.mono}}>{regimeConfig.label}</span>
+          <span style={{fontSize:10,padding:"3px 8px",borderRadius:4,background:C.accentLight,color:C.navy,fontWeight:600,fontFamily:T.mono}}>{profileLabel} {(mult*100).toFixed(0)}%</span>
         </div>
       </div>
-      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1.4fr 1.4fr 0.5fr 0.8fr", background: C.navy, padding: "9px 14px" }}>
-          {["Asset Class", "Base Signal", "Your Signal", "Dir", "Conf"].map((h, i) => (
-            <div key={i} style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{h}</div>
+      <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1.6fr 1.3fr 1.3fr 0.5fr 0.7fr 0.5fr",background:C.navy,padding:"9px 14px"}}>
+          {["Asset Class","Base Signal","Your Signal","Dir","Conf","Why"].map((h,i)=>(
+            <div key={i} style={{fontSize:9,fontWeight:600,color:"rgba(255,255,255,0.6)",textTransform:"uppercase",letterSpacing:"0.08em"}}>{h}</div>
           ))}
         </div>
-        {exposure.rows.map((row, i) => {
-          const adjSignal = getProfileSignal(row.signal, mult);
-          const changed = adjSignal !== row.signal;
-          return (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.8fr 1.4fr 1.4fr 0.5fr 0.8fr", padding: "9px 14px", borderBottom: i < exposure.rows.length - 1 ? `1px solid ${C.borderLight}` : "none", background: i % 2 === 0 ? C.white : "#fafbfc" }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: C.navy }}>{row.asset_class}</div>
-              <div style={{ fontSize: 11, color: C.faint, fontFamily: T.mono }}>{row.signal}</div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: sigColors[adjSignal] || C.soft, fontFamily: T.mono, display: "flex", alignItems: "center", gap: 4 }}>
-                {adjSignal}
-                {changed && <span style={{ fontSize: 9, color: C.gold }}> </span>}
+        {exposure.rows.map((row,i)=>{
+          const adjSignal=getProfileSignal(row.signal,mult);
+          const changed=adjSignal!==row.signal;
+          const isOpen=openRow===i;
+          const color=sigColors[adjSignal]||C.soft;
+          const why=getWhy(row.asset_class,row.signal);
+          return(
+            <div key={i}>
+              <div style={{display:"grid",gridTemplateColumns:"1.6fr 1.3fr 1.3fr 0.5fr 0.7fr 0.5fr",padding:"9px 14px",borderBottom:!isOpen&&i<exposure.rows.length-1?`1px solid ${C.borderLight}`:"none",background:isOpen?`${color}06`:i%2===0?C.white:"#fafbfc"}}>
+                <div style={{fontSize:12,fontWeight:600,color:C.navy}}>{row.asset_class}</div>
+                <div style={{fontSize:11,color:C.faint,fontFamily:T.mono}}>{row.signal}</div>
+                <div style={{fontSize:11,fontWeight:700,color,fontFamily:T.mono,display:"flex",alignItems:"center",gap:4}}>
+                  {adjSignal}{changed&&<span style={{fontSize:8,color:C.gold}}>adj</span>}
+                </div>
+                <div style={{fontSize:12,fontWeight:700,color}}>{dirText[row.direction]||row.direction}</div>
+                <div style={{fontSize:11,fontFamily:T.mono,color:C.navy,fontWeight:600}}>{(row.confidence*mult).toFixed(0)}%</div>
+                <button onClick={()=>setOpenRow(isOpen?null:i)} style={{background:"none",border:`1px solid ${isOpen?color:C.border}`,borderRadius:4,padding:"2px 5px",cursor:"pointer",fontSize:9,color:isOpen?color:C.faint,fontFamily:T.mono,fontWeight:600}}>{isOpen?"hide":"why"}</button>
               </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: sigColors[adjSignal] || C.soft }}>{dirText[row.direction] || row.direction}</div>
-              <div style={{ fontSize: 11, fontFamily: T.mono, color: C.navy, fontWeight: 600 }}>{(row.confidence * mult).toFixed(0)}%</div>
+              {isOpen&&(
+                <div style={{padding:"10px 14px 14px",borderBottom:i<exposure.rows.length-1?`1px solid ${C.borderLight}`:"none",background:`${color}06`}}>
+                  <div style={{fontSize:9,fontWeight:700,color,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6,fontFamily:T.mono}}>Why {row.signal}?</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    {why.map((reason,j)=>(
+                      <div key={j} style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{color,fontSize:11,fontWeight:700,flexShrink:0}}>check</span>
+                        <span style={{fontSize:13,color:C.navy}}>{reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{marginTop:8,fontSize:10,color:C.soft,fontFamily:T.mono}}>Magnitude: {row.magnitude} | Confidence: {row.confidence.toFixed(0)}%</div>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-      {regimeConfig.narrative && (
-        <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 6, background: regimeConfig.bgColor, border: `1px solid ${regimeConfig.color}33`, fontSize: 11, fontStyle: "italic", color: C.navy, lineHeight: 1.5 }}>
-          -> {regimeConfig.narrative.text}
+      {regimeConfig.narrative&&(
+        <div style={{marginTop:10,padding:"9px 12px",borderRadius:6,background:regimeConfig.bgColor,border:`1px solid ${regimeConfig.color}33`,fontSize:11,fontStyle:"italic",color:C.navy,lineHeight:1.5}}>
+          {regimeConfig.narrative.text}
         </div>
       )}
+      <div style={{marginTop:5,fontSize:9,color:C.faint,fontFamily:T.mono}}>Click "why" on any row to see the reasoning behind each signal.</div>
     </div>
   );
 }
@@ -1858,6 +1931,68 @@ function AuthScreen({onAuth}){
         <button onClick={handleAuth} disabled={loading} style={{...btnPrimary,width:"100%",fontSize:14,opacity:loading?0.7:1}}>{loading?<Spin/>:"Sign In"}</button>
         {err&&<div style={eBox}>{err}</div>}
         <div style={{textAlign:"center",marginTop:24,fontSize:12,color:C.faint}}>KG&Co Capital Advisory . Powered by Grine Technologies</div>
+      </div>
+    </div>
+  );
+}
+
+// -- Benchmark Panel --
+function BenchmarkPanel({holdings, regimeConfig}){
+  if(!holdings||!holdings.length)return null;
+  const REGIME_OPTIMAL={
+    "SURGE":   {"Equities":42,"Credit (HY)":18,"Commodities":12,"Duration":15,"USD":5,"Cash":8},
+    "CRUISE":  {"Equities":35,"Credit (HY)":12,"Commodities":8,"Duration":25,"USD":8,"Cash":12},
+    "PRESSURE":{"Equities":25,"Credit (HY)":8,"Commodities":22,"Duration":20,"USD":10,"Cash":15},
+    "SLIDE":   {"Equities":18,"Credit (HY)":5,"Commodities":8,"Duration":40,"USD":12,"Cash":17},
+    "SHOCK":   {"Equities":10,"Credit (HY)":2,"Commodities":5,"Duration":45,"USD":18,"Cash":20},
+    "FOG":     {"Equities":28,"Credit (HY)":8,"Commodities":8,"Duration":30,"USD":10,"Cash":16},
+  };
+  const TICKER_CLASS={
+    "AAPL":"Equities","MSFT":"Equities","GOOGL":"Equities","AMZN":"Equities","NVDA":"Equities",
+    "META":"Equities","TSLA":"Equities","SPY":"Equities","QQQ":"Equities","VTI":"Equities","VXUS":"Equities",
+    "BRK-B":"Equities","TLT":"Duration","IEF":"Duration","BND":"Duration","AGG":"Duration",
+    "HYG":"Credit (HY)","JNK":"Credit (HY)","LQD":"Credit (HY)",
+    "GLD":"Commodities","IAU":"Commodities","DJP":"Commodities",
+    "SHV":"Cash","BIL":"Cash","VNQ":"Equities",
+  };
+  const optimal=REGIME_OPTIMAL[regimeConfig.label]||REGIME_OPTIMAL["FOG"];
+  // Build current allocation by asset class
+  const current={};
+  holdings.forEach(h=>{
+    const cls=TICKER_CLASS[h.ticker]||"Equities";
+    current[cls]=(current[cls]||0)+(h.weight||0);
+  });
+  const allClasses=Object.keys(optimal);
+  return(
+    <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+      <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr",background:C.navy,padding:"9px 16px"}}>
+        {["Asset Class","Your Portfolio","GrineOS Optimal","Difference"].map((h,i)=>(
+          <div key={i} style={{fontSize:9,fontWeight:600,color:"rgba(255,255,255,0.6)",textTransform:"uppercase",letterSpacing:"0.08em"}}>{h}</div>
+        ))}
+      </div>
+      {allClasses.map((cls,i)=>{
+        const curr=parseFloat((current[cls]||0).toFixed(1));
+        const opt=optimal[cls]||0;
+        const diff=curr-opt;
+        const diffColor=Math.abs(diff)<3?C.soft:diff>0?"#f97316":"#2563eb";
+        return(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:i<allClasses.length-1?`1px solid ${C.borderLight}`:"none",background:i%2===0?C.white:"#fafbfc"}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.navy}}>{cls}</div>
+            <div style={{fontSize:12,fontFamily:T.mono,color:C.navy}}>{curr.toFixed(1)}%</div>
+            <div style={{fontSize:12,fontFamily:T.mono,color:regimeConfig.color,fontWeight:600}}>{opt}%
+              <div style={{height:3,background:C.borderLight,borderRadius:2,marginTop:3,width:60,overflow:"hidden"}}>
+                <div style={{width:`${opt}%`,height:"100%",background:regimeConfig.color,borderRadius:2}}/>
+              </div>
+            </div>
+            <div style={{fontSize:12,fontFamily:T.mono,fontWeight:600,color:diffColor}}>
+              {diff===0?"=":`${diff>0?"+":""}${diff.toFixed(1)}%`}
+              {Math.abs(diff)>5&&<span style={{fontSize:9,marginLeft:4,color:diffColor}}>{"!"}</span>}
+            </div>
+          </div>
+        );
+      })}
+      <div style={{padding:"10px 16px",background:regimeConfig.bgColor,fontSize:11,color:regimeConfig.color,fontStyle:"italic"}}>
+        GrineOS optimal allocation for <strong>{regimeConfig.label}</strong> regime. Differences over 5% are flagged.
       </div>
     </div>
   );
@@ -1955,6 +2090,11 @@ function DemoTab({demoP}){
         </div>
       )}
       <RegimeTimeline/>
+      {/* Benchmark */}
+      <div style={{marginTop:32}}>
+        <h3 style={{fontSize:14,fontWeight:600,color:C.navy,marginBottom:16,textTransform:"uppercase",letterSpacing:"0.08em"}}>Portfolio vs GrineOS Optimal</h3>
+        <BenchmarkPanel holdings={processedHoldings} regimeConfig={regimeConfig}/>
+      </div>
     </div>
   );
 }
@@ -2407,42 +2547,180 @@ function BacktestTab({token, demoP}){
 }
 
 function ScenariosTab({token,demoP}){
-  const[scenarios,setScenarios]=useState(null);const[result,setResult]=useState(null);const[selected,setSelected]=useState("");const[loading,setLoading]=useState(false);const[err,setErr]=useState("");
-  const{regimeConfig,regime}=useRegime();
-  useEffect(()=>{
-    apiFetch("/api/v1/scenarios",token).then(d=>{const s=Array.isArray(d)?d:d.scenarios||[];setScenarios([...s,"Regime Transition"]);}).catch(()=>setScenarios(["Rates +50bps","Rates +100bps","Rates +200bps","Rates -100bps","Equity Correction (-10%)","Equity Crash (-20%)","Bear Market (-30%)","Tech Sector Crash (-25%)","Stagflation","Risk-Off / Flight to Safety","Credit Crisis","Recovery Rally","Soft Landing","Inflation Spike","Regime Transition"]));
-  },[token]);
-  const scenarioMap={"Rates +50bps":{impact:{equity_shock:-0.03,bond_impact:-0.02,vol_increase:0.01},portfolio_impact:{total_return:-2.1,volatility_change:0.8,max_drawdown:-3.2},severity:"Low"},"Rates +100bps":{impact:{equity_shock:-0.06,bond_impact:-0.04,vol_increase:0.02},portfolio_impact:{total_return:-4.3,volatility_change:1.5,max_drawdown:-6.1},severity:"Medium"},"Rates +200bps":{impact:{equity_shock:-0.12,bond_impact:-0.08,vol_increase:0.04},portfolio_impact:{total_return:-8.7,volatility_change:3.2,max_drawdown:-12.4},severity:"High"},"Rates -100bps":{impact:{equity_shock:0.08,bond_impact:0.06,vol_increase:-0.01},portfolio_impact:{total_return:6.8,volatility_change:-1.2,max_drawdown:-2.1},severity:"Low"},"Equity Correction (-10%)":{impact:{equity_shock:-0.10,bond_impact:0.02,vol_increase:0.03},portfolio_impact:{total_return:-6.8,volatility_change:2.1,max_drawdown:-9.2},severity:"Medium"},"Equity Crash (-20%)":{impact:{equity_shock:-0.20,bond_impact:0.05,vol_increase:0.06},portfolio_impact:{total_return:-13.6,volatility_change:4.8,max_drawdown:-18.7},severity:"High"},"Bear Market (-30%)":{impact:{equity_shock:-0.30,bond_impact:0.08,vol_increase:0.10},portfolio_impact:{total_return:-20.4,volatility_change:7.2,max_drawdown:-28.1},severity:"High"},"Tech Sector Crash (-25%)":{impact:{equity_shock:-0.18,bond_impact:0.03,vol_increase:0.08},portfolio_impact:{total_return:-12.1,volatility_change:5.4,max_drawdown:-16.8},severity:"High"},"Stagflation":{impact:{equity_shock:-0.15,bond_impact:-0.10,vol_increase:0.08},portfolio_impact:{total_return:-11.8,volatility_change:6.1,max_drawdown:-15.2},severity:"High"},"Risk-Off / Flight to Safety":{impact:{equity_shock:-0.12,bond_impact:0.08,vol_increase:0.05},portfolio_impact:{total_return:-7.2,volatility_change:3.8,max_drawdown:-10.4},severity:"Medium"},"Credit Crisis":{impact:{equity_shock:-0.25,bond_impact:-0.05,vol_increase:0.12},portfolio_impact:{total_return:-18.6,volatility_change:8.9,max_drawdown:-24.3},severity:"High"},"Recovery Rally":{impact:{equity_shock:0.15,bond_impact:-0.02,vol_increase:-0.02},portfolio_impact:{total_return:11.4,volatility_change:-1.8,max_drawdown:-2.8},severity:"Low"},"Soft Landing":{impact:{equity_shock:0.08,bond_impact:0.03,vol_increase:-0.01},portfolio_impact:{total_return:6.2,volatility_change:-0.9,max_drawdown:-1.6},severity:"Low"},"Inflation Spike":{impact:{equity_shock:-0.08,bond_impact:-0.12,vol_increase:0.06},portfolio_impact:{total_return:-9.4,volatility_change:4.2,max_drawdown:-13.1},severity:"Medium"}};
-  const run=async(s)=>{
-    setSelected(s);setLoading(true);setErr("");setResult(null);
+  const[result,setResult]=useState(null);const[selected,setSelected]=useState(null);const[loading,setLoading]=useState(false);const[err,setErr]=useState("");
+  const{regimeConfig}=useRegime();
+
+  // Plain-English scenarios mapped to driver deltas for Engine A /regime/simulate
+  const SCENARIOS=[
+    {id:"fed_cut_100",label:"Fed Cuts 100bps",icon:"cut",group:"Monetary Policy",
+     desc:"Central bank pivots dovish. Liquidity floods back in.",
+     drivers:{growth:0.3,inflation:-0.2,liquidity:0.8,volatility:-0.4}},
+    {id:"fed_hike_100",label:"Fed Hikes 100bps",icon:"hike",group:"Monetary Policy",
+     desc:"Aggressive tightening cycle. Rates shock the system.",
+     drivers:{growth:-0.4,inflation:-0.3,liquidity:-1.0,volatility:0.5}},
+    {id:"vix_40",label:"VIX Spikes to 40",icon:"spike",group:"Volatility Shock",
+     desc:"Panic event. Risk assets sell off simultaneously.",
+     drivers:{growth:-0.8,inflation:0.1,liquidity:-0.9,volatility:1.8}},
+    {id:"oil_120",label:"Oil Reaches $120",icon:"oil",group:"Commodity Shock",
+     desc:"Energy price surge. Stagflation risk rises sharply.",
+     drivers:{growth:-0.5,inflation:1.2,liquidity:-0.3,volatility:0.4}},
+    {id:"equity_down_20",label:"Equity Crash -20%",icon:"crash",group:"Equity Shock",
+     desc:"Sharp equity drawdown. Credit spreads blow out.",
+     drivers:{growth:-1.2,inflation:-0.2,liquidity:-0.8,volatility:1.5}},
+    {id:"soft_landing",label:"Soft Landing",icon:"land",group:"Benign",
+     desc:"Inflation falls, growth holds. The dream scenario.",
+     drivers:{growth:0.2,inflation:-0.8,liquidity:0.3,volatility:-0.6}},
+    {id:"stagflation",label:"Stagflation",icon:"stag",group:"Stagflation",
+     desc:"Growth collapses while inflation stays sticky. Worst of both worlds.",
+     drivers:{growth:-1.0,inflation:1.0,liquidity:-0.5,volatility:0.8}},
+    {id:"china_recovery",label:"China Reopens Fully",icon:"china",group:"Global",
+     desc:"Demand surge from China. Commodities and EM equities rip.",
+     drivers:{growth:0.8,inflation:0.5,liquidity:0.4,volatility:-0.3}},
+    {id:"credit_crisis",label:"Credit Crisis",icon:"credit",group:"Volatility Shock",
+     desc:"Spreads blow out. Liquidity evaporates. 2008-style.",
+     drivers:{growth:-1.5,inflation:-0.3,liquidity:-2.0,volatility:1.8}},
+    {id:"recovery_rally",label:"Recovery Rally",icon:"rally",group:"Benign",
+     desc:"Risk appetite surges. Growth re-accelerates.",
+     drivers:{growth:1.2,inflation:0.2,liquidity:0.6,volatility:-0.8}},
+  ];
+
+  const GROUPS=["Monetary Policy","Volatility Shock","Equity Shock","Stagflation","Commodity Shock","Global","Benign"];
+
+  const run=async(scenario)=>{
+    setSelected(scenario.id);setLoading(true);setErr("");setResult(null);
     try{
-      let sd;
-      if(s==="Regime Transition"){const next=regime.current==='expansion'?'protection':'expansion';sd={scenario:`Regime Transition: ${regimeConfig.label} -> ${REGIME_PARAMETERS[next].label}`,impact:{equity_shock:regime.current==='expansion'?-0.15:0.10,bond_impact:regime.current==='expansion'?0.08:-0.05,vol_increase:regime.current==='expansion'?0.05:-0.03},portfolio_impact:{total_return:regime.current==='expansion'?-8.2:12.4,volatility_change:regime.current==='expansion'?3.1:-2.8,max_drawdown:regime.current==='expansion'?-12.5:-6.8},severity:"High"};}
-      else{const cfg=scenarioMap[s]||{impact:{equity_shock:-0.10,bond_impact:0.02,vol_increase:0.03},portfolio_impact:{total_return:-6.8,volatility_change:2.4,max_drawdown:-9.8},severity:"Medium"};sd={scenario:s,...cfg};}
-      setResult(sd);
+      // Get current driver scores and apply scenario delta
+      const state=regimeConfig;
+      const baseDrivers=regimeConfig.drivers||{};
+      const simDrivers={
+        growth:(baseDrivers.growth?.score||0)+scenario.drivers.growth,
+        inflation:(baseDrivers.inflation?.score||0)+scenario.drivers.inflation,
+        liquidity:(baseDrivers.liquidity?.score||0)+scenario.drivers.liquidity,
+        volatility:(baseDrivers.volatility?.score||0)+scenario.drivers.volatility,
+      };
+      // Clip to -2/+2 range
+      Object.keys(simDrivers).forEach(k=>{simDrivers[k]=Math.max(-2,Math.min(2,simDrivers[k]));});
+      const res=await fetch(`${ENGINE_A}/regime/simulate`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(simDrivers)
+      });
+      const data=await res.json();
+      setResult({scenario,simResult:data,baseRegime:regimeConfig.label});
     }catch(e){setErr(e.message);}
     finally{setLoading(false);}
   };
+
+  const groupColors={"Monetary Policy":"#2563eb","Volatility Shock":"#dc2626","Equity Shock":"#f97316","Stagflation":"#b45309","Commodity Shock":"#7c3aed","Global":"#16a34a","Benign":"#22c55e"};
+
   return(
-    <div style={{padding:"32px 40px",maxWidth:1000,animation:"fadeUp .4s ease"}}>
-      <div style={{marginBottom:28,borderBottom:`1px solid ${C.border}`,paddingBottom:16}}>
+    <div style={{padding:"32px 40px",maxWidth:1100,animation:"fadeUp .4s ease"}}>
+      <div style={{marginBottom:24,borderBottom:`1px solid ${C.border}`,paddingBottom:16}}>
         <div style={{fontSize:12,color:C.soft,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:500,marginBottom:6}}>Scenario Engine</div>
-        <h2 style={{fontFamily:T.display,fontSize:26,fontWeight:600,color:C.navy,fontStyle:"italic"}}>Stress test against macro scenarios.</h2>
-        <div style={{marginTop:12,padding:'8px 14px',borderRadius:6,backgroundColor:regimeConfig.bgColor,display:"inline-block"}}>
-          <span style={{fontSize:12,color:regimeConfig.color,fontWeight:600}}>Current: {regimeConfig.label} Regime</span>
-        </div>
+        <h2 style={{fontFamily:T.display,fontSize:26,fontWeight:600,color:C.navy,fontStyle:"italic"}}>What if...?</h2>
+        <p style={{fontSize:13,color:C.soft,marginTop:4}}>Select a scenario to see how it would shift the current regime. Powered by live Engine A simulation.</p>
       </div>
-      {scenarios?<div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:28}}>
-        {scenarios.map((s,i)=>{const n=typeof s==='string'?s:s.name||`Scenario ${i}`;const isRT=n==="Regime Transition";return(
-          <button key={i} onClick={()=>run(n)} style={{...btnOutline,borderColor:selected===n?regimeConfig.color:isRT?regimeConfig.color+"66":C.border,color:selected===n?regimeConfig.color:isRT?regimeConfig.color:C.soft,background:selected===n?regimeConfig.bgColor:isRT?regimeConfig.bgColor+"44":'transparent',fontWeight:selected===n?600:400,padding:"9px 16px"}}>{n}</button>
-        );})}
-      </div>:<div style={{color:C.faint,fontSize:13}}><Spin dark/>Loading...</div>}
-      {loading&&<div style={{color:C.soft,fontSize:12,display:"flex",alignItems:"center",marginBottom:16}}><Spin dark/>Running {selected}...</div>}
+
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:24,padding:"10px 16px",borderRadius:8,background:regimeConfig.bgColor,border:`1px solid ${regimeConfig.color}33`}}>
+        <span style={{width:8,height:8,borderRadius:"50%",background:regimeConfig.color,display:"inline-block",flexShrink:0}}/>
+        <span style={{fontSize:13,color:C.navy}}>Starting from <strong style={{color:regimeConfig.color}}>{regimeConfig.label}</strong> at {regimeConfig.confidence?.toFixed(0)}% confidence</span>
+      </div>
+
+      {GROUPS.map(group=>{
+        const groupScenarios=SCENARIOS.filter(s=>s.group===group);
+        if(!groupScenarios.length)return null;
+        return(
+          <div key={group} style={{marginBottom:20}}>
+            <div style={{fontSize:10,fontWeight:700,color:groupColors[group]||C.soft,textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:8,fontFamily:T.mono,display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:6,height:6,borderRadius:2,background:groupColors[group]||C.soft,display:"inline-block"}}/>
+              {group}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:10}}>
+              {groupScenarios.map(s=>{
+                const isSelected=selected===s.id;
+                return(
+                  <button key={s.id} onClick={()=>run(s)} disabled={loading&&!isSelected}
+                    style={{textAlign:"left",padding:"14px 16px",borderRadius:8,border:`1px solid ${isSelected?regimeConfig.color:C.border}`,
+                    background:isSelected?regimeConfig.bgColor:C.white,cursor:"pointer",transition:"all 0.15s",
+                    opacity:loading&&!isSelected?0.5:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:isSelected?regimeConfig.color:C.navy,marginBottom:4}}>{s.label}</div>
+                    <div style={{fontSize:12,color:C.soft,lineHeight:1.4}}>{s.desc}</div>
+                    <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+                      {Object.entries(s.drivers).map(([driver,delta])=>(
+                        <span key={driver} style={{fontSize:9,padding:"2px 5px",borderRadius:3,background:delta>0?"rgba(22,163,74,0.08)":delta<0?"rgba(220,38,38,0.08)":"rgba(100,116,139,0.08)",color:delta>0?"#16a34a":delta<0?"#dc2626":"#64748b",fontFamily:T.mono,fontWeight:600}}>
+                          {driver.slice(0,3)} {delta>0?"+":""}{delta.toFixed(1)}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {loading&&<div style={{margin:"20px 0",display:"flex",alignItems:"center",gap:10,color:C.soft,fontSize:13}}><Spin dark/>Simulating scenario through Engine A...</div>}
       {err&&<div style={eBox}>{err}</div>}
-      {result&&<div><Tag color={C.gold}>Scenario: {selected}</Tag><div style={{marginTop:16}}><SmartResult data={result}/></div></div>}
+
+      {result&&(()=>{
+        const{scenario,simResult,baseRegime}=result;
+        const newRegime=simResult?.state?.code?.value||simResult?.state?.code||"FOG";
+        const newConf=simResult?.state?.confidence||50;
+        const RCOLS={"SURGE":"#16a34a","CRUISE":"#22c55e","PRESSURE":"#b45309","SLIDE":"#f97316","SHOCK":"#dc2626","FOG":"#7c3aed"};
+        const newColor=RCOLS[newRegime]||"#64748b";
+        const changed=newRegime!==baseRegime;
+        return(
+          <div style={{marginTop:24,padding:24,borderRadius:12,border:`2px solid ${newColor}44`,background:C.white}}>
+            <div style={{fontSize:11,fontWeight:600,color:C.soft,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:16,fontFamily:T.mono}}>Scenario Result: {scenario.label}</div>
+            <div style={{display:"flex",alignItems:"center",gap:20,marginBottom:20}}>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:10,color:C.faint,marginBottom:4,fontFamily:T.mono}}>Current</div>
+                <div style={{fontSize:20,fontWeight:700,color:regimeConfig.color,fontFamily:T.display}}>{baseRegime}</div>
+              </div>
+              <div style={{fontSize:24,color:changed?"#f97316":C.faint}}>{changed?"->":"-"}</div>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:10,color:C.faint,marginBottom:4,fontFamily:T.mono}}>Simulated</div>
+                <div style={{fontSize:20,fontWeight:700,color:newColor,fontFamily:T.display}}>{newRegime}</div>
+                <div style={{fontSize:11,color:newColor,fontFamily:T.mono}}>{newConf.toFixed(0)}% conf</div>
+              </div>
+              {changed&&<div style={{padding:"8px 16px",borderRadius:8,background:`${newColor}12`,border:`1px solid ${newColor}44`,fontSize:13,color:newColor,fontWeight:600}}>
+                Regime Change Detected
+              </div>}
+            </div>
+            {simResult?.exposure?.rows&&(
+              <div>
+                <div style={{fontSize:11,fontWeight:600,color:C.soft,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10,fontFamily:T.mono}}>New Exposure Map</div>
+                <div style={{display:"grid",gap:6}}>
+                  {simResult.exposure.rows.map((row,i)=>{
+                    const origRow=regimeConfig.exposure?.rows?.find(r=>r.asset_class===row.asset_class);
+                    const changed2=origRow&&origRow.signal!==row.signal;
+                    return(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderRadius:6,background:changed2?`${newColor}08`:C.borderLight,border:changed2?`1px solid ${newColor}22`:"none"}}>
+                        <span style={{fontSize:12,color:C.navy,fontWeight:500}}>{row.asset_class}</span>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          {changed2&&origRow&&<span style={{fontSize:11,color:C.faint,fontFamily:T.mono,textDecoration:"line-through"}}>{origRow.signal}</span>}
+                          <span style={{fontSize:11,fontWeight:700,color:{"MAX OVERWEIGHT":"#16a34a","OVERWEIGHT":"#22c55e","NEUTRAL":C.soft,"UNDERWEIGHT":"#f97316","MAX UNDERWEIGHT":"#dc2626","FLOOR":C.gold,"ELEVATED":C.gold,"MAXIMUM":"#dc2626"}[row.signal]||C.soft,fontFamily:T.mono}}>
+                            {row.signal}{changed2&&" *"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {simResult?.narrative&&(
+              <div style={{marginTop:16,padding:"10px 14px",borderRadius:6,background:`${newColor}08`,border:`1px solid ${newColor}33`,fontSize:13,color:C.navy,fontStyle:"italic"}}>
+                {simResult.narrative.text}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
+
 
 /*     DASHBOARD     */
 function Dashboard({token,userEmail,onLogout}){
