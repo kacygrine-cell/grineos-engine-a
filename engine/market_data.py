@@ -153,12 +153,15 @@ def fetch_portfolio_prices(
 ) -> pd.DataFrame:
     """
     Fetch historical prices for portfolio holdings.
-    holdings: list of {"ticker": str, "weight": float} dicts
-
-    Falls back to SPY for any unresolvable ticker.
+    holdings: list of ticker strings OR list of {"ticker": str, "weight": float} dicts.
     Returns daily adjusted close prices.
     """
-    tickers = list({h["ticker"] for h in holdings if h.get("ticker")})
+    # Handle both list of strings and list of dicts
+    if holdings and isinstance(holdings[0], str):
+        tickers = list(dict.fromkeys(holdings))  # dedupe, preserve order
+    else:
+        tickers = list({h["ticker"] for h in holdings if h.get("ticker")})
+
     if not tickers:
         tickers = ["SPY"]
 
@@ -169,8 +172,11 @@ def fetch_portfolio_prices(
     for col in prices.columns:
         if prices[col].isna().all():
             if spy_prices is None:
-                spy_prices = fetch_prices(["SPY"], start=start, end=end)["SPY"]
-            prices[col] = spy_prices
+                spy_data = fetch_prices(["SPY"], start=start, end=end)
+                if not spy_data.empty and "SPY" in spy_data.columns:
+                    spy_prices = spy_data["SPY"]
+            if spy_prices is not None:
+                prices[col] = spy_prices
 
     prices = prices.ffill().bfill()
     return prices
