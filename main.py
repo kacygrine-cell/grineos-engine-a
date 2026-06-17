@@ -1,4 +1,6 @@
 import os
+import logging
+logger = logging.getLogger(__name__)
 import json as _json
 import re as _re
 import httpx
@@ -42,6 +44,29 @@ async def global_exception_handler(request, exc):
 
 _engine = EngineA()
 
+# Check if live data mode is enabled
+USE_LIVE = os.getenv("USE_LIVE_DATA", "false").lower() == "true"
+
+def _get_live_summary():
+    """Get regime summary using real market data drivers."""
+    from engine.live_drivers import fetch_live_drivers
+    scores = fetch_live_drivers()
+    return _engine.simulate(
+        growth=scores["growth"],
+        inflation=scores["inflation"],
+        liquidity=scores["liquidity"],
+        volatility=scores["volatility"],
+    )
+
+def _get_summary():
+    """Return live or synthetic summary based on USE_LIVE_DATA env var."""
+    if USE_LIVE:
+        try:
+            return _get_live_summary()
+        except Exception as e:
+            logger.warning(f"Live data failed, falling back to synthetic: {e}")
+    return _get_summary()
+
 
 #  Health 
 @app.get("/", tags=["Health"])
@@ -50,36 +75,55 @@ def health():
         "status": "healthy",
         "service": "GrineOS Engine A",
         "version": "2.0.0",
+        "live_data_mode": USE_LIVE,
         "anthropic_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
+@app.get("/regime/drivers/live", tags=["Regime"])
+def get_live_drivers():
+    """Fetch and return real-time driver scores from Yahoo Finance."""
+    from engine.live_drivers import fetch_live_drivers, get_driver_labels
+    try:
+        scores = fetch_live_drivers()
+        labels = get_driver_labels(scores)
+        return {
+            "source": "yahoo_finance",
+            "scores": scores,
+            "labels": labels,
+            "live_mode_active": USE_LIVE,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Live driver fetch failed: {str(e)}")
+
+
 #  Regime endpoints 
 @app.get("/regime/summary", response_model=RegimeSummary, tags=["Regime"])
 def get_summary():
-    return _engine.get_summary()
+    return _get_summary()
 
 @app.get("/regime/state", response_model=RegimeState, tags=["Regime"])
 def get_state():
-    return _engine.get_summary().state
+    return _get_summary().state
 
 @app.get("/regime/drivers", tags=["Regime"])
 def get_drivers():
-    state = _engine.get_summary().state
+    state = _get_summary().state
     return {"regime": state.code, "drivers": state.drivers, "timestamp": state.timestamp}
 
 @app.get("/regime/exposure", response_model=ExposureMap, tags=["Regime"])
 def get_exposure():
-    return _engine.get_summary().exposure
+    return _get_summary().exposure
 
 @app.get("/regime/narrative", response_model=Narrative, tags=["Regime"])
 def get_narrative():
-    return _engine.get_summary().narrative
+    return _get_summary().narrative
 
 @app.get("/regime/transitions", response_model=List[TransitionProb], tags=["Regime"])
 def get_transitions():
-    return _engine.get_summary().transitions
+    return _get_summary().transitions
 
 @app.get("/regime/history", tags=["Regime"])
 def get_history(days: int = Query(default=90, ge=1, le=365)):
@@ -144,7 +188,7 @@ async def agent_chat(req: AgentRequest):
     if not api_key:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured.")
 
-    summary = _engine.get_summary()
+    summary = _get_summary()
     state = summary.state
     exposure_lines = " | ".join(
         f"{r.asset_class}: {r.signal}" for r in summary.exposure.rows
@@ -204,7 +248,7 @@ class AlertConfigRequest(BaseModel):
 
 @app.post("/alerts/check", tags=["Alerts"])
 async def alerts_check():
-    summary = _engine.get_summary()
+    summary = _get_summary()
     fired = check_and_fire(summary)
     return {
         "checked_at": datetime.now(timezone.utc).isoformat(),
@@ -227,7 +271,7 @@ async def alerts_test():
     to_email = os.getenv("ALERT_EMAIL_TO", "")
     if not to_email:
         raise HTTPException(status_code=503, detail="ALERT_EMAIL_TO not configured.")
-    summary = _engine.get_summary()
+    summary = _get_summary()
     state = summary.state
     meta = REGIME_META.get(state.code.value)
     html = (
@@ -339,7 +383,7 @@ async def ic_brief(req: ICBriefRequest):
     if not api_key:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured.")
 
-    summary = _engine.get_summary()
+    summary = _get_summary()
     state = summary.state
     meta = REGIME_META.get(state.code.value)
     g = state.drivers.get("growth")
