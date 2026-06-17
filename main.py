@@ -230,7 +230,7 @@ async def agent_chat(req: AgentRequest):
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            json={"model": "claude-sonnet-4-20250514", "max_tokens": 800, "system": system_prompt, "messages": messages}
+            json={"model": "claude-sonnet-4-6", "max_tokens": 800, "system": system_prompt, "messages": messages}
         )
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Anthropic error {resp.status_code}: {resp.text[:200]}")
@@ -444,7 +444,7 @@ Be specific, institutional, and decisive. No hedging. Every recommendation must 
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            json={"model": "claude-sonnet-4-20250514", "max_tokens": 2000, "system": system_prompt,
+            json={"model": "claude-sonnet-4-6", "max_tokens": 2000, "system": system_prompt,
                   "messages": [{"role": "user", "content": user_prompt}]}
         )
 
