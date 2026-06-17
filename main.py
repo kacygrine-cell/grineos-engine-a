@@ -270,6 +270,8 @@ class BacktestRequest(BaseModel):
     period: str = "3y"
     rebalance: str = "monthly"
     profile_multiplier: float = 1.0
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
 
 @app.get("/backtest/test", tags=["Backtest"])
 def backtest_test():
@@ -309,6 +311,8 @@ def backtest_run(req: BacktestRequest):
             period_years=period_years,
             rebalance_frequency=req.rebalance,
             profile_multiplier=req.profile_multiplier,
+            start_date_override=req.start_date,
+            end_date_override=req.end_date,
         )
         return result
     except Exception as e:
