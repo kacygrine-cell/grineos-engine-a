@@ -225,12 +225,12 @@ def run_backtest(
     regime_series = regime_series.loc[common_dates]
 
     if len(prices) < 20:
-        raise ValueError("Insufficient price history — try a shorter period or different tickers")
+        raise ValueError("Insufficient price history  try a shorter period or different tickers")
 
     # Daily returns for each holding
     daily_returns = prices.pct_change().fillna(0)
 
-    # ── Base strategy (buy & hold) ──────────────────────────────────────────
+    #  Base strategy (buy & hold) 
     base_portfolio_returns = pd.Series(0.0, index=daily_returns.index)
     for ticker, weight in base_weights.items():
         if ticker in daily_returns.columns:
@@ -238,7 +238,7 @@ def run_backtest(
 
     base_equity = (1 + base_portfolio_returns).cumprod()
 
-    # ── Regime-adjusted strategy ────────────────────────────────────────────
+    #  Regime-adjusted strategy 
     regime_portfolio_returns = pd.Series(0.0, index=daily_returns.index)
     current_weights = base_weights.copy()
     last_rebalance_regime = None
@@ -270,7 +270,7 @@ def run_backtest(
 
     regime_equity = (1 + regime_portfolio_returns).cumprod()
 
-    # ── Compute metrics ─────────────────────────────────────────────────────
+    #  Compute metrics 
     base_metrics = _compute_metrics(base_equity)
     regime_metrics = _compute_metrics(regime_equity)
 
