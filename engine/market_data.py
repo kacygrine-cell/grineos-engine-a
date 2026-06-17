@@ -40,26 +40,53 @@ def fetch_prices(
 ) -> pd.DataFrame:
     """
     Download adjusted close prices for a list of tickers.
-    Returns a DataFrame indexed by date, columns = tickers.
-    Missing tickers are silently dropped.
+    Compatible with yfinance >= 0.2.54.
     """
     if not end:
         end = datetime.today().strftime("%Y-%m-%d")
 
-    raw = yf.download(
-        tickers,
-        start=start,
-        end=end,
-        interval=interval,
-        auto_adjust=True,
-        progress=False,
-        threads=True,
-    )
+    try:
+        raw = yf.download(
+            tickers,
+            start=start,
+            end=end,
+            interval=interval,
+            auto_adjust=True,
+            progress=False,
+            threads=True,
+        )
+    except Exception:
+        raw = pd.DataFrame()
 
-    if isinstance(raw.columns, pd.MultiIndex):
-        prices = raw["Close"]
+    # Handle MultiIndex columns (newer yfinance returns (field, ticker) MultiIndex)
+    if not raw.empty and isinstance(raw.columns, pd.MultiIndex):
+        level0 = raw.columns.get_level_values(0)
+        if "Close" in level0:
+            prices = raw["Close"]
+        elif "Adj Close" in level0:
+            prices = raw["Adj Close"]
+        else:
+            prices = raw.iloc[:, :len(tickers) if isinstance(tickers, list) else 1]
+    elif not raw.empty and "Close" in raw.columns:
+        prices = raw[["Close"]]
+        if isinstance(tickers, list) and len(tickers) == 1:
+            prices.columns = tickers
     else:
-        prices = raw[["Close"]] if "Close" in raw.columns else raw
+        prices = raw
+
+    # If download failed or returned empty, try one-by-one via Ticker.history
+    if prices.empty or prices.isna().all().all():
+        frames = {}
+        ticker_list = tickers if isinstance(tickers, list) else [tickers]
+        for ticker in ticker_list:
+            try:
+                t = yf.Ticker(ticker)
+                hist = t.history(start=start, end=end, interval=interval, auto_adjust=True)
+                if not hist.empty and "Close" in hist.columns:
+                    frames[ticker] = hist["Close"]
+            except Exception:
+                pass
+        prices = pd.DataFrame(frames) if frames else pd.DataFrame()
 
     prices = prices.dropna(how="all")
     return prices
