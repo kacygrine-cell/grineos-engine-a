@@ -183,20 +183,22 @@ def run_backtest(
     period_years: int = 3,
     rebalance_frequency: str = "monthly",
     profile_multiplier: float = 1.0,
+    start_date_override: str = None,
+    end_date_override: str = None,
 ) -> dict:
     """
     Run a real backtest for a given portfolio.
-
-    holdings: list of {"ticker": str, "weight": float}
-    period_years: lookback in years (1, 2, 3, or 5)
-    rebalance_frequency: "monthly" or "on_regime_change"
-    profile_multiplier: 0.55 conservative, 0.80 moderate, 1.0 aggressive
-
-    Returns dict with "base" and "regime_adjusted" metrics.
+    Supports both preset period (period_years) and custom date range.
     """
     from datetime import datetime, timedelta
-    end_date = datetime.today().strftime("%Y-%m-%d")
-    start_date = (datetime.today() - timedelta(days=period_years * 365 + 30)).strftime("%Y-%m-%d")
+    if start_date_override and end_date_override:
+        start_date = start_date_override
+        end_date = end_date_override
+        delta = datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")
+        period_years = max(1, round(delta.days / 365))
+    else:
+        end_date = datetime.today().strftime("%Y-%m-%d")
+        start_date = (datetime.today() - timedelta(days=period_years * 365 + 30)).strftime("%Y-%m-%d")
 
     # Normalise weights
     total_w = sum(h.get("weight", 0) for h in holdings)
