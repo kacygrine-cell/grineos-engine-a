@@ -30,6 +30,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {str(exc)}"},
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
+
 _engine = EngineA()
 
 
@@ -261,18 +271,48 @@ class BacktestRequest(BaseModel):
     rebalance: str = "monthly"
     profile_multiplier: float = 1.0
 
+@app.get("/backtest/test", tags=["Backtest"])
+def backtest_test():
+    """Diagnostic: verify yfinance and Yahoo Finance connectivity."""
+    results = {}
+    try:
+        import yfinance as yf
+        results["yfinance_import"] = "OK"
+    except ImportError as e:
+        results["yfinance_import"] = f"FAILED: {e}"
+        return results
+    try:
+        import pandas as pd
+        results["pandas_import"] = "OK"
+    except ImportError as e:
+        results["pandas_import"] = f"FAILED: {e}"
+    try:
+        ticker = yf.Ticker("SPY")
+        hist = ticker.history(period="5d")
+        if len(hist) > 0:
+            results["yahoo_finance"] = f"OK - {len(hist)} days of SPY data"
+            results["latest_spy"] = float(hist["Close"].iloc[-1])
+        else:
+            results["yahoo_finance"] = "FAILED - empty response"
+    except Exception as e:
+        results["yahoo_finance"] = f"FAILED: {type(e).__name__}: {str(e)}"
+    return results
+
 @app.post("/backtest/run", tags=["Backtest"])
 def backtest_run(req: BacktestRequest):
     period_map = {"1y": 1, "2y": 2, "3y": 3, "5y": 5}
     period_years = period_map.get(req.period, 3)
     holdings = [{"ticker": h.ticker, "weight": h.weight} for h in req.holdings]
-    result = run_backtest(
-        holdings=holdings,
-        period_years=period_years,
-        rebalance_frequency=req.rebalance,
-        profile_multiplier=req.profile_multiplier,
-    )
-    return result
+    try:
+        result = run_backtest(
+            holdings=holdings,
+            period_years=period_years,
+            rebalance_frequency=req.rebalance,
+            profile_multiplier=req.profile_multiplier,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Backtest error: {type(e).__name__}: {str(e)}")
 
 
 #  Investment Committee Brief 
