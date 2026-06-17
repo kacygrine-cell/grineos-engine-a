@@ -235,17 +235,68 @@ async def agent_chat(req: AgentRequest):
     messages = [{"role": m.role, "content": m.content} for m in req.history[-6:]]
     messages.append({"role": "user", "content": req.message})
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            json={"model": "claude-sonnet-4-6", "max_tokens": 800, "system": system_prompt, "messages": messages}
-        )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Anthropic error {resp.status_code}: {resp.text[:200]}")
-    data = resp.json()
-    reply = data["content"][0]["text"] if data.get("content") else "No response."
-    return AgentResponse(response=reply, regime=state.code.value, confidence=state.confidence)
+    # Web search tool definition
+    tools = [
+        {
+            "type": "web_search_20250305",
+            "name": "web_search",
+        }
+    ]
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        # Agentic loop: keep calling until no more tool use
+        current_messages = messages.copy()
+        max_iterations = 5
+        final_reply = "No response."
+
+        for _ in range(max_iterations):
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json={
+                    "model": "claude-sonnet-4-6",
+                    "max_tokens": 1500,
+                    "system": system_prompt,
+                    "tools": tools,
+                    "messages": current_messages,
+                }
+            )
+
+            if resp.status_code != 200:
+                raise HTTPException(status_code=502, detail=f"Anthropic error {resp.status_code}: {resp.text[:200]}")
+
+            data = resp.json()
+            stop_reason = data.get("stop_reason")
+            content_blocks = data.get("content", [])
+
+            # Extract any text from this response
+            text_parts = [b["text"] for b in content_blocks if b.get("type") == "text" and b.get("text")]
+            if text_parts:
+                final_reply = " ".join(text_parts)
+
+            # If done, break
+            if stop_reason == "end_turn":
+                break
+
+            # If tool use, add assistant message and continue
+            if stop_reason == "tool_use":
+                current_messages.append({"role": "assistant", "content": content_blocks})
+                # Add tool results (web_search handles results automatically in the API)
+                tool_results = []
+                for block in content_blocks:
+                    if block.get("type") == "tool_use":
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block["id"],
+                            "content": "Search completed."
+                        })
+                if tool_results:
+                    current_messages.append({"role": "user", "content": tool_results})
+                continue
+
+            break
+
+    return AgentResponse(response=final_reply, regime=state.code.value, confidence=state.confidence)
 
 
 #  Alerts 
