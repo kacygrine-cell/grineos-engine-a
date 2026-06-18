@@ -423,6 +423,97 @@ def backtest_run(req: BacktestRequest):
         raise HTTPException(status_code=500, detail=f"Backtest error: {type(e).__name__}: {str(e)}")
 
 
+#  Regime Replay 
+@app.get("/regime/replay", tags=["Replay"])
+def regime_replay(date: str = Query(..., description="Date in YYYY-MM-DD format")):
+    """Reconstruct what the regime would have been on any historical date."""
+    from datetime import datetime, timedelta
+    try:
+        target_dt = datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+    if target_dt < datetime(2010, 1, 1):
+        raise HTTPException(status_code=400, detail="Date must be 2010-01-01 or later.")
+    if target_dt > datetime.today():
+        raise HTTPException(status_code=400, detail="Date cannot be in the future.")
+    try:
+        import yfinance as yf
+        import pandas as pd
+        import math
+
+        start = (target_dt - timedelta(days=400)).strftime("%Y-%m-%d")
+        end = (target_dt + timedelta(days=5)).strftime("%Y-%m-%d")
+        tickers = ["SPY", "^VIX", "TIP", "IEF", "HYG", "LQD"]
+        raw = yf.download(tickers, start=start, end=end, auto_adjust=True, progress=False, threads=True)
+        if isinstance(raw.columns, pd.MultiIndex):
+            prices = raw["Close"] if "Close" in raw.columns.get_level_values(0) else raw.iloc[:, :6]
+        else:
+            prices = raw
+        prices = prices.ffill().dropna(how="all")
+        prices = prices[prices.index <= pd.Timestamp(target_dt)]
+        if prices.empty or len(prices) < 20:
+            raise ValueError("Insufficient data for this date.")
+        actual_date = prices.index[-1]
+
+        def get_col(name):
+            clean = name.replace("^", "")
+            for c in [name, clean, name.upper()]:
+                if c in prices.columns:
+                    return prices[c].dropna()
+            return pd.Series(dtype=float)
+
+        def zscore_clip(series, value, clip=2.0):
+            vals = series.tolist()
+            if len(vals) < 10: return 0.0
+            mean = sum(vals) / len(vals)
+            std = math.sqrt(sum((v-mean)**2 for v in vals)/len(vals)) or 1.0
+            return max(-clip, min(clip, (value-mean)/std))
+
+        scores = {"growth": 0.0, "inflation": 0.0, "liquidity": 0.0, "volatility": 0.0}
+        spy = get_col("SPY")
+        if len(spy) >= 64:
+            mom = spy.pct_change(63).dropna()
+            if len(mom) >= 2: scores["growth"] = round(zscore_clip(mom, float(mom.iloc[-1])), 3)
+        vix = get_col("^VIX")
+        if len(vix) >= 20: scores["volatility"] = round(-zscore_clip(vix, float(vix.iloc[-1])), 3)
+        tip, ief = get_col("TIP"), get_col("IEF")
+        if len(tip) >= 64 and len(ief) >= 64:
+            aln = pd.concat([tip, ief], axis=1, join="inner").dropna()
+            if len(aln) >= 64:
+                inf_mom = (aln.iloc[:,0]/aln.iloc[:,1]).pct_change(63).dropna()
+                if len(inf_mom) >= 2: scores["inflation"] = round(zscore_clip(inf_mom, float(inf_mom.iloc[-1])), 3)
+        hyg, lqd = get_col("HYG"), get_col("LQD")
+        if len(hyg) >= 20 and len(lqd) >= 20:
+            aln2 = pd.concat([hyg, lqd], axis=1, join="inner").dropna()
+            if len(aln2) >= 20:
+                cr = aln2.iloc[:,0]/aln2.iloc[:,1]
+                scores["liquidity"] = round(zscore_clip(cr, float(cr.iloc[-1])), 3)
+
+        summary = _engine.simulate(
+            growth=scores["growth"], inflation=scores["inflation"],
+            liquidity=scores["liquidity"], volatility=scores["volatility"],
+        )
+        meta = REGIME_META.get(summary.state.code.value)
+        lbl = {"growth": "Accelerating" if scores["growth"]>0.5 else "Decelerating" if scores["growth"]<-0.5 else "Stable",
+               "inflation": "Rising" if scores["inflation"]>0.5 else "Falling" if scores["inflation"]<-0.5 else "Contained",
+               "liquidity": "Abundant" if scores["liquidity"]>0.5 else "Tightening" if scores["liquidity"]<-0.5 else "Neutral",
+               "volatility": "Suppressed" if scores["volatility"]>0.5 else "Elevated" if scores["volatility"]<-0.5 else "Moderate"}
+        return {
+            "requested_date": date, "actual_date": str(actual_date.date()),
+            "regime": summary.state.code.value, "subtitle": summary.state.subtitle,
+            "color": meta.color if meta else "#16a34a",
+            "confidence": round(summary.state.confidence, 1),
+            "instinct": meta.instinct if meta else "",
+            "drivers": {k: {"score": scores[k], "label": lbl[k]} for k in scores},
+            "narrative": summary.narrative.text if summary.narrative else "",
+            "risk_flag": summary.narrative.risk_flag if summary.narrative else "",
+            "exposure_rows": [{"asset_class": r.asset_class, "signal": r.signal, "direction": r.direction,
+                "magnitude": r.magnitude, "confidence": r.confidence} for r in summary.exposure.rows] if summary.exposure else [],
+            "transitions": [{"regime": t.regime, "probability": t.probability} for t in summary.transitions] if summary.transitions else [],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Replay error: {type(e).__name__}: {str(e)}")
+
 #  Investment Committee Brief 
 class ICBriefRequest(BaseModel):
     portfolio_summary: Optional[str] = None
