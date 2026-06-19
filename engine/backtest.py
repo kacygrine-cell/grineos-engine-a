@@ -228,8 +228,14 @@ def run_backtest(
         raise ValueError("No valid holdings provided")
 
     # Fetch prices and regime history in parallel
+    # Fetch prices and regime history
+    # Regime reconstruction needs 400 days of lookback for z-score calculation
+    # so we start the regime fetch earlier, then align to user's requested dates
+    from datetime import datetime as _dt
+    regime_start = (_dt.strptime(start_date, "%Y-%m-%d") - timedelta(days=420)).strftime("%Y-%m-%d")
+
     prices = fetch_portfolio_prices(list(base_weights.keys()), start=start_date, end=end_date)
-    regime_series = reconstruct_regime_history(start=start_date, end=end_date)
+    regime_series = reconstruct_regime_history(start=regime_start, end=end_date)
 
     # Align dates
     common_dates = prices.index.intersection(regime_series.index)
