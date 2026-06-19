@@ -406,8 +406,13 @@ def backtest_test():
 
 @app.post("/backtest/run", tags=["Backtest"])
 def backtest_run(req: BacktestRequest):
-    period_map = {"1y": 1, "2y": 2, "3y": 3, "5y": 5}
+    period_map = {"1y": 1, "2y": 2, "3y": 3, "5y": 5, "7y": 7, "10y": 10, "max": 15}
     period_years = period_map.get(req.period, 3)
+    # "max" = from 2010-01-01 to today
+    start_override = req.start_date
+    end_override = req.end_date
+    if req.period == "max" and not start_override:
+        start_override = "2010-01-01"
     holdings = [{"ticker": h.ticker, "weight": h.weight} for h in req.holdings]
     try:
         result = run_backtest(
@@ -415,8 +420,8 @@ def backtest_run(req: BacktestRequest):
             period_years=period_years,
             rebalance_frequency=req.rebalance,
             profile_multiplier=req.profile_multiplier,
-            start_date_override=req.start_date,
-            end_date_override=req.end_date,
+            start_date_override=start_override,
+            end_date_override=end_override,
         )
         return result
     except Exception as e:
