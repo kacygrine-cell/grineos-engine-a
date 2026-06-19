@@ -103,6 +103,7 @@ class BacktestMetrics:
     max_drawdown_duration_days: int
     recovery_days: int
     cumulative_returns: list   # daily cumulative return values
+    dates: list = None         # corresponding dates for each data point
 
 
 def _compute_metrics(equity_curve: pd.Series, rf: float = 0.04) -> BacktestMetrics:
@@ -161,6 +162,14 @@ def _compute_metrics(equity_curve: pd.Series, rf: float = 0.04) -> BacktestMetri
         step = len(cum_rets) // 252
         cum_rets = cum_rets[::step]
 
+    # Downsample dates to match downsampled returns
+    all_dates = [str(d.date()) for d in equity_curve.index]
+    if len(all_dates) > 252:
+        step = len(all_dates) // 252
+        sampled_dates = all_dates[::step]
+    else:
+        sampled_dates = all_dates
+
     return BacktestMetrics(
         total_return=round(total_return, 4),
         annualized_return=round(ann_return, 4),
@@ -175,6 +184,7 @@ def _compute_metrics(equity_curve: pd.Series, rf: float = 0.04) -> BacktestMetri
         max_drawdown_duration_days=max_dd_duration,
         recovery_days=recovery,
         cumulative_returns=cum_rets,
+        dates=sampled_dates,
     )
 
 
